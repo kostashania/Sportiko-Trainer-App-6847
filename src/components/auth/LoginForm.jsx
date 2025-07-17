@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSuperadmin } from '../../contexts/SuperadminContext';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
@@ -9,6 +10,7 @@ const LoginForm = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
+  const { checkSuperadminStatus } = useSuperadmin();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -21,7 +23,12 @@ const LoginForm = () => {
         toast.error(error.message);
       } else {
         toast.success('Welcome back!');
-        navigate('/dashboard');
+        
+        // Check if user is superadmin after login
+        setTimeout(async () => {
+          await checkSuperadminStatus();
+          // Navigation will be handled by the route change in App.jsx
+        }, 100);
       }
     } catch (error) {
       toast.error('An error occurred during login');
@@ -40,7 +47,7 @@ const LoginForm = () => {
       >
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900">Welcome back</h2>
-          <p className="mt-2 text-gray-600">Sign in to your Sportiko Trainer account</p>
+          <p className="mt-2 text-gray-600">Sign in to your Sportiko account</p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -93,6 +100,15 @@ const LoginForm = () => {
                 Sign up
               </Link>
             </p>
+          </div>
+
+          {/* Demo credentials */}
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
+            <div className="text-xs text-gray-600 space-y-1">
+              <p><strong>Superadmin:</strong> admin@sportiko.com / Admin123!</p>
+              <p><strong>Trainer:</strong> Create a new account to test trainer features</p>
+            </div>
           </div>
         </form>
       </motion.div>

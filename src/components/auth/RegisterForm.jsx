@@ -30,17 +30,24 @@ const RegisterForm = () => {
       return;
     }
 
+    if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
 
     try {
       const { error } = await signUp(formData.email, formData.password, formData.fullName);
       if (error) {
-        toast.error(error.message);
+        console.error('Registration error:', error);
+        toast.error(error.message || 'An error occurred during registration');
       } else {
-        toast.success('Account created successfully! Please check your email to verify your account.');
+        toast.success('Account created successfully! You can now sign in.');
         navigate('/login');
       }
     } catch (error) {
+      console.error('Registration error:', error);
       toast.error('An error occurred during registration');
     } finally {
       setLoading(false);
@@ -105,7 +112,7 @@ const RegisterForm = () => {
               value={formData.password}
               onChange={handleChange}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Create a password"
+              placeholder="Create a password (min 6 characters)"
             />
           </div>
 

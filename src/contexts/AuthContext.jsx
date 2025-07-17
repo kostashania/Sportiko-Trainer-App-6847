@@ -19,6 +19,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     console.log('AuthProvider: Initializing');
+    
     // Get initial session
     const getSession = async () => {
       try {
@@ -44,11 +45,13 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         console.log('AuthProvider: Auth state changed', event);
         setUser(session?.user ?? null);
+        
         if (session?.user) {
           await fetchProfile(session.user.id);
         } else {
           setProfile(null);
         }
+        
         setLoading(false);
       }
     );
@@ -102,19 +105,17 @@ export const AuthProvider = ({ children }) => {
 
         const { error: profileError } = await supabase
           .from('trainers')
-          .insert([
-            {
-              id: data.user.id,
-              email: data.user.email,
-              full_name: fullName,
-              trial_start: trialStart.toISOString(),
-              trial_end: trialEnd.toISOString(),
-              created_at: new Date().toISOString()
-            }
-          ]);
+          .insert([{
+            id: data.user.id,
+            email: data.user.email,
+            full_name: fullName,
+            trial_start: trialStart.toISOString(),
+            trial_end: trialEnd.toISOString(),
+            created_at: new Date().toISOString()
+          }]);
 
         if (profileError) throw profileError;
-        
+
         // Create tenant schema
         console.log('AuthProvider: Creating tenant schema');
         await createTenantSchema(data.user.id);

@@ -29,12 +29,18 @@ export const SuperadminProvider = ({ children }) => {
 
   const checkSuperadminStatus = async () => {
     try {
+      // Check if user exists in superadmins table
       const { data, error } = await supabase
-        .rpc('is_superadmin', { user_id: user.id });
-      
-      if (error) throw error;
-      
-      setIsSuperadmin(data || false);
+        .from('superadmins')
+        .select('id')
+        .eq('id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      setIsSuperadmin(!!data);
     } catch (error) {
       console.error('Error checking superadmin status:', error);
       setIsSuperadmin(false);

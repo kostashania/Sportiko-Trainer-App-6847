@@ -1,0 +1,16 @@
+{
+  "name": "Sportiko Trainer",
+  "short_name": "Sportiko",
+  "description": "Manage your players, assignments, and assessments",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B82F6",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

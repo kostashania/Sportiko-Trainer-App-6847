@@ -3,11 +3,12 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
+import { motion } from 'framer-motion';
 
-const { FiHome, FiUsers, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiBarChart } = FiIcons;
+const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiDatabase } = FiIcons;
 
 const SuperadminSidebar = () => {
-  const { signOut, profile } = useAuth();
+  const { signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -18,17 +19,16 @@ const SuperadminSidebar = () => {
   const menuItems = [
     { path: '/superadmin/dashboard', icon: FiHome, label: 'Dashboard' },
     { path: '/superadmin/trainers', icon: FiUsers, label: 'Trainers' },
-    { path: '/superadmin/shop', icon: FiShoppingBag, label: 'Shop Management' },
-    { path: '/superadmin/ads', icon: FiMegaphone, label: 'Ad Management' },
-    { path: '/superadmin/analytics', icon: FiBarChart, label: 'Analytics' },
-    { path: '/superadmin/settings', icon: FiSettings, label: 'Settings' }
+    { path: '/superadmin/shop', icon: FiShoppingBag, label: 'Shop' },
+    { path: '/superadmin/ads', icon: FiMegaphone, label: 'Ads' },
+    { path: '/superadmin/info', icon: FiDatabase, label: 'System Info' }
   ];
 
   return (
     <div className="w-64 bg-white shadow-lg flex flex-col">
       <div className="p-6 border-b">
-        <h1 className="text-2xl font-bold text-red-600">Sportiko Admin</h1>
-        <p className="text-sm text-gray-600 mt-1">{profile?.full_name}</p>
+        <h1 className="text-2xl font-bold text-blue-600">Sportiko Admin</h1>
+        <p className="text-sm text-gray-600 mt-1">Superadmin Panel</p>
       </div>
 
       <nav className="flex-1 p-4">
@@ -40,7 +40,7 @@ const SuperadminSidebar = () => {
                 className={({ isActive }) =>
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
                     isActive
-                      ? 'bg-red-50 text-red-600 border-r-2 border-red-600'
+                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
                       : 'text-gray-700 hover:bg-gray-50'
                   }`
                 }

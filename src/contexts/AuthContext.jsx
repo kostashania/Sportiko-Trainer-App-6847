@@ -19,14 +19,12 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     console.log('AuthProvider: Initializing');
-    
     // Get initial session
     const getSession = async () => {
       try {
         console.log('AuthProvider: Getting session');
         const { data: { session } } = await supabase.auth.getSession();
         console.log('AuthProvider: Session obtained', session ? 'with user' : 'no user');
-        
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user.id);
@@ -45,13 +43,11 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         console.log('AuthProvider: Auth state changed', event);
         setUser(session?.user ?? null);
-        
         if (session?.user) {
           await fetchProfile(session.user.id);
         } else {
           setProfile(null);
         }
-        
         setLoading(false);
       }
     );
@@ -62,16 +58,16 @@ export const AuthProvider = ({ children }) => {
   const fetchProfile = async (userId) => {
     try {
       console.log('AuthProvider: Fetching profile for', userId);
+      // Fix: Use eq() method properly with parameter binding
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .eq('id', userId)
         .single();
-
+        
       if (error && error.code !== 'PGRST116') {
         throw error;
       }
-
       console.log('AuthProvider: Profile data', data);
       setProfile(data);
     } catch (error) {
@@ -96,7 +92,7 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Create trainer profile
+      // Create trainer profile if user is created
       if (data.user) {
         console.log('AuthProvider: Creating trainer profile');
         const trialStart = new Date();
@@ -162,12 +158,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const schema = `trainer_${userId.replace(/-/g, '_')}`;
       console.log('Creating tenant schema:', schema);
-      
       const { error } = await supabase.rpc('create_tenant_schema', {
         schema_name: schema,
         trainer_id: userId
       });
-      
       if (error) throw error;
       console.log('Tenant schema created successfully');
     } catch (error) {

@@ -6,13 +6,10 @@ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables');
+  throw new Error('Missing Supabase environment variables. Please check .env file.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  db: {
-    schema: 'sportiko_trainer'
-  }
-});
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Get tenant schema based on user ID
 export const getTenantSchema = (userId) => {
@@ -21,13 +18,13 @@ export const getTenantSchema = (userId) => {
 
 // Update table references to use schema
 export const TABLES = {
-  TRAINERS: 'sportiko_trainer.trainers',
-  SUPERADMINS: 'sportiko_trainer.superadmins',
-  PLAYERS: 'sportiko_trainer.players',
-  SHOP_ITEMS: 'sportiko_trainer.shop_items',
-  ADS: 'sportiko_trainer.ads',
-  ORDERS: 'sportiko_trainer.orders',
-  ORDER_ITEMS: 'sportiko_trainer.order_items'
+  TRAINERS: 'trainers',
+  SUPERADMINS: 'superadmins',
+  PLAYERS: 'players',
+  SHOP_ITEMS: 'shop_items',
+  ADS: 'ads',
+  ORDERS: 'orders',
+  ORDER_ITEMS: 'order_items'
 };
 
 // Storage bucket name

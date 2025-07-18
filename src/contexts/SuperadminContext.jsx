@@ -29,6 +29,13 @@ export const SuperadminProvider = ({ children }) => {
 
   const checkSuperadminStatus = async () => {
     try {
+      // Safety check to prevent errors when user is null
+      if (!user || !user.id) {
+        setIsSuperadmin(false);
+        setLoading(false);
+        return;
+      }
+      
       // Check if user exists in superadmins table
       const { data, error } = await supabase
         .from('superadmins')

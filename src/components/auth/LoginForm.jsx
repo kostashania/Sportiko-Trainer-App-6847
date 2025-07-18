@@ -9,14 +9,13 @@ const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { signIn, user } = useAuth();
   const { checkSuperadminStatus } = useSuperadmin();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       const { error } = await signIn(email, password);
       if (error) {
@@ -26,8 +25,11 @@ const LoginForm = () => {
         
         // Check if user is superadmin after login
         setTimeout(async () => {
-          await checkSuperadminStatus();
-          // Navigation will be handled by the route change in App.jsx
+          if (user) {
+            await checkSuperadminStatus();
+          }
+          // Navigate to dashboard as default
+          navigate('/dashboard');
         }, 100);
       }
     } catch (error) {
@@ -106,7 +108,7 @@ const LoginForm = () => {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
             <div className="text-xs text-gray-600 space-y-1">
-              <p><strong>Superadmin:</strong> admin@sportiko.com / Admin123!</p>
+              <p><strong>Email:</strong> admin@sportiko.com / Password: Admin123!</p>
               <p><strong>Trainer:</strong> Create a new account to test trainer features</p>
             </div>
           </div>

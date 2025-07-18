@@ -1,22 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Get environment variables
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = 'https://bjelydvroavsqczejpgd.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWx5ZHZyb2F2c3FjemVqcGdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwMjE2MDcsImV4cCI6MjA2NjU5NzYwN30.f-693IO1d0TCBQRiWcSTvjCT8I7bb0t9Op_gvD5LeIE';
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error('Missing Supabase environment variables');
-  throw new Error('Missing Supabase environment variables. Please check .env file.');
+  throw new Error('Missing Supabase credentials');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 
 // Get tenant schema based on user ID
 export const getTenantSchema = (userId) => {
   return `trainer_${userId.replace(/-/g, '_')}`;
 };
 
-// Update table references to use schema
+// Table names
 export const TABLES = {
   TRAINERS: 'trainers',
   SUPERADMINS: 'superadmins',
@@ -25,33 +28,4 @@ export const TABLES = {
   ADS: 'ads',
   ORDERS: 'orders',
   ORDER_ITEMS: 'order_items'
-};
-
-// Storage bucket name
-export const STORAGE_BUCKET = 'sportiko_trainer';
-
-// Helper functions
-export const getStoragePath = (path) => `${STORAGE_BUCKET}/${path}`;
-
-export const storage = {
-  upload: async (file, path) => {
-    const { data, error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, file);
-    return { data, error };
-  },
-  
-  getPublicUrl: (path) => {
-    const { data } = supabase.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(path);
-    return data.publicUrl;
-  },
-  
-  remove: async (path) => {
-    const { error } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .remove([path]);
-    return { error };
-  }
 };

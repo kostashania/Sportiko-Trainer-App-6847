@@ -18,13 +18,10 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
-    console.log('AuthProvider: Initializing');
     // Get initial session
     const getSession = async () => {
       try {
-        console.log('AuthProvider: Getting session');
         const { data: { session } } = await supabase.auth.getSession();
-        console.log('AuthProvider: Session obtained', session ? 'with user' : 'no user');
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user.id);
@@ -41,7 +38,6 @@ export const AuthProvider = ({ children }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('AuthProvider: Auth state changed', event);
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user.id);
@@ -57,116 +53,93 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async (userId) => {
     try {
-      console.log('AuthProvider: Fetching profile for', userId);
-      // Fix: Use eq() method properly with parameter binding
-      const { data, error } = await supabase
+      const { data: trainerData, error: trainerError } = await supabase
         .from('trainers')
         .select('*')
         .eq('id', userId)
         .single();
-        
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+
+      if (!trainerError) {
+        setProfile({ ...trainerData, role: 'trainer' });
+        return;
       }
-      console.log('AuthProvider: Profile data', data);
-      setProfile(data);
+
+      const { data: adminData, error: adminError } = await supabase
+        .from('superadmins')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!adminError) {
+        setProfile({ ...adminData, role: 'superadmin' });
+        return;
+      }
+
+      console.error('No profile found');
     } catch (error) {
       console.error('Error fetching profile:', error);
-      toast.error('Failed to fetch profile');
-    }
-  };
-
-  const signUp = async (email, password, fullName) => {
-    try {
-      console.log('AuthProvider: Signing up user', email);
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            role: 'trainer'
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      // Create trainer profile if user is created
-      if (data.user) {
-        console.log('AuthProvider: Creating trainer profile');
-        const trialStart = new Date();
-        const trialEnd = new Date();
-        trialEnd.setDate(trialEnd.getDate() + 14);
-
-        const { error: profileError } = await supabase
-          .from('trainers')
-          .insert([{
-            id: data.user.id,
-            email: data.user.email,
-            full_name: fullName,
-            trial_start: trialStart.toISOString(),
-            trial_end: trialEnd.toISOString(),
-            created_at: new Date().toISOString()
-          }]);
-
-        if (profileError) throw profileError;
-
-        // Create tenant schema
-        console.log('AuthProvider: Creating tenant schema');
-        await createTenantSchema(data.user.id);
-      }
-
-      return { data, error: null };
-    } catch (error) {
-      console.error('Sign up error:', error);
-      return { data: null, error };
     }
   };
 
   const signIn = async (email, password) => {
     try {
-      console.log('AuthProvider: Signing in user', email);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
       if (error) throw error;
-      console.log('AuthProvider: Sign in successful');
       return { data, error: null };
     } catch (error) {
-      console.error('Sign in error:', error);
       return { data: null, error };
     }
   };
 
   const signOut = async () => {
     try {
-      console.log('AuthProvider: Signing out');
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null);
       setProfile(null);
+      return { error: null };
     } catch (error) {
-      console.error('Sign out error:', error);
-      toast.error('Error signing out');
+      return { error };
     }
   };
 
-  const createTenantSchema = async (userId) => {
+  const signUp = async (email, password, fullName) => {
     try {
-      const schema = `trainer_${userId.replace(/-/g, '_')}`;
-      console.log('Creating tenant schema:', schema);
-      const { error } = await supabase.rpc('create_tenant_schema', {
-        schema_name: schema,
-        trainer_id: userId
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName
+          }
+        }
       });
+
       if (error) throw error;
-      console.log('Tenant schema created successfully');
+
+      if (data.user) {
+        // Create trainer profile
+        const { error: profileError } = await supabase
+          .from('trainers')
+          .insert([
+            {
+              id: data.user.id,
+              email: data.user.email,
+              full_name: fullName,
+              trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+            }
+          ]);
+
+        if (profileError) throw profileError;
+      }
+
+      return { data, error: null };
     } catch (error) {
-      console.error('Error creating tenant schema:', error);
-      toast.error('Error setting up your account');
+      return { data: null, error };
     }
   };
 
@@ -174,9 +147,9 @@ export const AuthProvider = ({ children }) => {
     user,
     profile,
     loading,
-    signUp,
     signIn,
     signOut,
+    signUp,
     fetchProfile
   };
 

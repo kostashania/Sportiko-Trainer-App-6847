@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSuperadmin } from '../../contexts/SuperadminContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import { motion } from 'framer-motion';
 
 const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiShield } = FiIcons;
 
@@ -14,8 +13,10 @@ const Sidebar = () => {
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
+    const { error } = await signOut();
+    if (!error) {
+      navigate('/login');
+    }
   };
 
   const menuItems = [
@@ -55,8 +56,7 @@ const Sidebar = () => {
               </NavLink>
             </li>
           ))}
-          
-          {/* Superadmin access link */}
+
           {isSuperadmin && (
             <li className="mt-6">
               <NavLink

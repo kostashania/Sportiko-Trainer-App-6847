@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
+import React, {useState, useEffect} from 'react';
+import {supabase} from '../../lib/supabase';
+import {useAuth} from '../../contexts/AuthContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const { FiShoppingCart, FiPackage, FiFilter, FiSearch } = FiIcons;
+const {FiShoppingCart, FiPackage, FiFilter, FiSearch} = FiIcons;
 
 const ShopPage = () => {
-  const { user } = useAuth();
+  const {user} = useAuth();
   const [shopItems, setShopItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,12 +24,12 @@ const ShopPage = () => {
   const loadShopItems = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const {data, error} = await supabase
         .from('shop_items')
         .select('*')
         .eq('active', true)
-        .order('created_at', { ascending: false });
-
+        .order('created_at', {ascending: false});
+      
       if (error) throw error;
       setShopItems(data || []);
     } catch (error) {
@@ -44,13 +44,13 @@ const ShopPage = () => {
     const existingItem = cart.find(cartItem => cartItem.id === item.id);
     
     if (existingItem) {
-      setCart(cart.map(cartItem =>
-        cartItem.id === item.id
-          ? { ...cartItem, quantity: cartItem.quantity + 1 }
+      setCart(cart.map(cartItem => 
+        cartItem.id === item.id 
+          ? {...cartItem, quantity: cartItem.quantity + 1} 
           : cartItem
       ));
     } else {
-      setCart([...cart, { ...item, quantity: 1 }]);
+      setCart([...cart, {...item, quantity: 1}]);
     }
     
     toast.success(`${item.name} added to cart!`);
@@ -66,8 +66,8 @@ const ShopPage = () => {
       return;
     }
     
-    setCart(cart.map(item =>
-      item.id === itemId ? { ...item, quantity } : item
+    setCart(cart.map(item => 
+      item.id === itemId ? {...item, quantity} : item
     ));
   };
 
@@ -80,15 +80,15 @@ const ShopPage = () => {
       toast.error('Please login to checkout');
       return;
     }
-
+    
     if (cart.length === 0) {
       toast.error('Your cart is empty');
       return;
     }
-
+    
     try {
       // Create order
-      const { data: order, error: orderError } = await supabase
+      const {data: order, error: orderError} = await supabase
         .from('orders')
         .insert([{
           user_id: user.id,
@@ -97,9 +97,9 @@ const ShopPage = () => {
         }])
         .select()
         .single();
-
+      
       if (orderError) throw orderError;
-
+      
       // Create order items
       const orderItems = cart.map(item => ({
         order_id: order.id,
@@ -107,13 +107,13 @@ const ShopPage = () => {
         quantity: item.quantity,
         price: item.price
       }));
-
-      const { error: itemsError } = await supabase
+      
+      const {error: itemsError} = await supabase
         .from('order_items')
         .insert(orderItems);
-
+      
       if (itemsError) throw itemsError;
-
+      
       setCart([]);
       setShowCart(false);
       toast.success('Order placed successfully!');
@@ -124,9 +124,12 @@ const ShopPage = () => {
   };
 
   const filteredItems = shopItems.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = 
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      item.description?.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const matchesCategory = !selectedCategory || item.category === selectedCategory;
+    
     return matchesSearch && matchesCategory;
   });
 
@@ -156,7 +159,7 @@ const ShopPage = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Shop</h1>
-        <button
+        <button 
           onClick={() => setShowCart(true)}
           className="relative flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
@@ -201,9 +204,9 @@ const ShopPage = () => {
         {filteredItems.map((item) => (
           <motion.div
             key={item.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+            initial={{opacity: 0, y: 20}}
+            animate={{opacity: 1, y: 0}}
+            transition={{duration: 0.3}}
             className="bg-white rounded-lg shadow hover:shadow-md transition-shadow"
           >
             <div className="aspect-w-16 aspect-h-9">
@@ -219,7 +222,6 @@ const ShopPage = () => {
                 </div>
               )}
             </div>
-            
             <div className="p-6">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-gray-900">{item.name}</h3>
@@ -227,11 +229,9 @@ const ShopPage = () => {
                   ${item.price}
                 </span>
               </div>
-              
               <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                 {item.description}
               </p>
-              
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm text-gray-500">
                   Stock: {item.stock_quantity}
@@ -240,7 +240,6 @@ const ShopPage = () => {
                   {item.category}
                 </span>
               </div>
-              
               <button
                 onClick={() => addToCart(item)}
                 disabled={item.stock_quantity === 0}
@@ -258,22 +257,21 @@ const ShopPage = () => {
       {showCart && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
+            initial={{opacity: 0, scale: 0.95}}
+            animate={{opacity: 1, scale: 1}}
+            transition={{duration: 0.3}}
             className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
           >
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-gray-900">Shopping Cart</h2>
-                <button
+                <button 
                   onClick={() => setShowCart(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   ×
                 </button>
               </div>
-              
               {cart.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">Your cart is empty</p>
               ) : (
@@ -309,7 +307,6 @@ const ShopPage = () => {
                       </div>
                     ))}
                   </div>
-                  
                   <div className="border-t pt-4">
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-lg font-semibold">Total: ${getTotalPrice().toFixed(2)}</span>

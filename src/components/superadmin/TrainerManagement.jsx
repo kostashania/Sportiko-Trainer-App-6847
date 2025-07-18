@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import React, {useState, useEffect} from 'react';
+import {supabase} from '../../lib/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import { motion } from 'framer-motion';
-import { format } from 'date-fns';
+import {motion} from 'framer-motion';
+import {format} from 'date-fns';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX } = FiIcons;
+const {FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX} = FiIcons;
 
 const TrainerManagement = () => {
   const [trainers, setTrainers] = useState([]);
@@ -20,11 +20,11 @@ const TrainerManagement = () => {
   const loadTrainers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const {data, error} = await supabase
         .from('trainers')
         .select('*')
-        .order('created_at', { ascending: false });
-
+        .order('created_at', {ascending: false});
+      
       if (error) throw error;
       setTrainers(data || []);
     } catch (error) {
@@ -37,19 +37,15 @@ const TrainerManagement = () => {
 
   const toggleTrainerStatus = async (trainerId, currentStatus) => {
     try {
-      const { error } = await supabase
+      const {error} = await supabase
         .from('trainers')
-        .update({ is_active: !currentStatus })
+        .update({is_active: !currentStatus})
         .eq('id', trainerId);
-
+      
       if (error) throw error;
-
       setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId 
-          ? { ...trainer, is_active: !currentStatus }
-          : trainer
+        trainer.id === trainerId ? {...trainer, is_active: !currentStatus} : trainer
       ));
-
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
       console.error('Error updating trainer status:', error);
@@ -61,20 +57,16 @@ const TrainerManagement = () => {
     try {
       const newTrialEnd = new Date();
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
-
-      const { error } = await supabase
+      
+      const {error} = await supabase
         .from('trainers')
-        .update({ trial_end: newTrialEnd.toISOString() })
+        .update({trial_end: newTrialEnd.toISOString()})
         .eq('id', trainerId);
-
+      
       if (error) throw error;
-
       setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId 
-          ? { ...trainer, trial_end: newTrialEnd.toISOString() }
-          : trainer
+        trainer.id === trainerId ? {...trainer, trial_end: newTrialEnd.toISOString()} : trainer
       ));
-
       toast.success('Trial extended by 14 days');
     } catch (error) {
       console.error('Error extending trial:', error);
@@ -82,22 +74,22 @@ const TrainerManagement = () => {
     }
   };
 
-  const filteredTrainers = trainers.filter(trainer =>
-    trainer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const filteredTrainers = trainers.filter(trainer => 
+    trainer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     trainer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTrialStatus = (trialEnd) => {
-    if (!trialEnd) return { status: 'expired', daysLeft: 0 };
+    if (!trialEnd) return {status: 'expired', daysLeft: 0};
     
     const endDate = new Date(trialEnd);
     const today = new Date();
     const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
     
     if (daysLeft > 0) {
-      return { status: 'active', daysLeft };
+      return {status: 'active', daysLeft};
     } else {
-      return { status: 'expired', daysLeft: 0 };
+      return {status: 'expired', daysLeft: 0};
     }
   };
 
@@ -151,7 +143,6 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
-        
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiCheck} className="w-8 h-8 text-green-600" />
@@ -163,7 +154,6 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
-        
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiClock} className="w-8 h-8 text-yellow-600" />
@@ -185,7 +175,6 @@ const TrainerManagement = () => {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">All Trainers</h3>
         </div>
-        
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -216,9 +205,9 @@ const TrainerManagement = () => {
                 return (
                   <motion.tr
                     key={trainer.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3 }}
+                    initial={{opacity: 0}}
+                    animate={{opacity: 1}}
+                    transition={{duration: 0.3}}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -240,26 +229,15 @@ const TrainerManagement = () => {
                       <div className="text-sm text-gray-900">{trainer.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        trialStatus.status === 'active'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {trialStatus.status === 'active' 
-                          ? `${trialStatus.daysLeft} days left`
-                          : 'Expired'
-                        }
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${trialStatus.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {trialStatus.status === 'active' ? `${trialStatus.daysLeft} days left` : 'Expired'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {trainer.created_at && format(new Date(trainer.created_at), 'MMM dd, yyyy')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        trainer.is_active !== false
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${trainer.is_active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                         {trainer.is_active !== false ? 'Active' : 'Inactive'}
                       </span>
                     </td>
@@ -267,11 +245,7 @@ const TrainerManagement = () => {
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            trainer.is_active !== false
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-green-100 text-green-700 hover:bg-green-200'
-                          }`}
+                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${trainer.is_active !== false ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
                         >
                           {trainer.is_active !== false ? 'Deactivate' : 'Activate'}
                         </button>

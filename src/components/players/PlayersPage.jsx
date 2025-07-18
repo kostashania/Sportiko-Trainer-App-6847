@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { useTenant } from '../../contexts/TenantContext';
+import React, {useState, useEffect} from 'react';
+import {useTenant} from '../../contexts/TenantContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
 import PlayerCard from './PlayerCard';
 import PlayerModal from './PlayerModal';
 import toast from 'react-hot-toast';
 
-const { FiPlus, FiSearch, FiFilter } = FiIcons;
+const {FiPlus, FiSearch, FiFilter} = FiIcons;
 
 const PlayersPage = () => {
-  const { queryTenantTable, tenantReady } = useTenant();
+  const {queryTenantTable, tenantReady} = useTenant();
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -26,10 +26,10 @@ const PlayersPage = () => {
   const loadPlayers = async () => {
     try {
       setLoading(true);
-      const { data, error } = await queryTenantTable('players')
+      const {data, error} = await queryTenantTable('players')
         .select('*')
-        .order('created_at', { ascending: false });
-
+        .order('created_at', {ascending: false});
+      
       if (error) throw error;
       setPlayers(data || []);
     } catch (error) {
@@ -52,14 +52,13 @@ const PlayersPage = () => {
 
   const handleDeletePlayer = async (playerId) => {
     if (!confirm('Are you sure you want to delete this player?')) return;
-
+    
     try {
-      const { error } = await queryTenantTable('players')
+      const {error} = await queryTenantTable('players')
         .delete()
         .eq('id', playerId);
-
-      if (error) throw error;
       
+      if (error) throw error;
       setPlayers(players.filter(p => p.id !== playerId));
       toast.success('Player deleted successfully');
     } catch (error) {
@@ -78,8 +77,8 @@ const PlayersPage = () => {
     loadPlayers(); // Refresh the list
   };
 
-  const filteredPlayers = players.filter(player =>
-    player.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const filteredPlayers = players.filter(player => 
+    player.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     player.position?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -111,7 +110,7 @@ const PlayersPage = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Players</h1>
-        <button
+        <button 
           onClick={handleAddPlayer}
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
@@ -142,7 +141,7 @@ const PlayersPage = () => {
       {filteredPlayers.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">No players found</p>
-          <button
+          <button 
             onClick={handleAddPlayer}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >

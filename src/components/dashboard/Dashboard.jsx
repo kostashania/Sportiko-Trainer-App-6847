@@ -1,18 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { useTenant } from '../../contexts/TenantContext';
+import React, {useState, useEffect} from 'react';
+import {useNavigate} from 'react-router-dom';
+import {useAuth} from '../../contexts/AuthContext';
+import {useTenant} from '../../contexts/TenantContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
 import StatsCard from './StatsCard';
 import AdBanner from './AdBanner';
 import RecentActivity from './RecentActivity';
 
-const { FiUsers, FiBookOpen, FiCreditCard, FiTrendingUp } = FiIcons;
+const {FiUsers, FiBookOpen, FiCreditCard, FiTrendingUp} = FiIcons;
 
 const Dashboard = () => {
-  const { profile } = useAuth();
-  const { queryTenantTable, tenantReady } = useTenant();
+  const navigate = useNavigate();
+  const {profile} = useAuth();
+  const {queryTenantTable, tenantReady} = useTenant();
   const [stats, setStats] = useState({
     totalPlayers: 0,
     activeHomework: 0,
@@ -30,18 +32,17 @@ const Dashboard = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      
       // Load players count
-      const { data: players } = await queryTenantTable('players').select('id');
+      const {data: players} = await queryTenantTable('players').select('id');
       
       // Load active homework count
-      const { data: homework } = await queryTenantTable('homework')
+      const {data: homework} = await queryTenantTable('homework')
         .select('id')
         .gte('due_date', new Date().toISOString());
       
       // Load pending payments count
-      const { data: payments } = await queryTenantTable('payments')
-        .select('id, amount')
+      const {data: payments} = await queryTenantTable('payments')
+        .select('id,amount')
         .eq('paid', false);
       
       setStats({
@@ -57,8 +58,19 @@ const Dashboard = () => {
     }
   };
 
-  const trialDaysLeft = profile?.trial_end ? 
-    Math.ceil((new Date(profile.trial_end) - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+  const handleAddPlayer = () => {
+    navigate('/players');
+  };
+
+  const handleCreateHomework = () => {
+    navigate('/homework');
+  };
+
+  const handleProcessPayment = () => {
+    navigate('/payments');
+  };
+
+  const trialDaysLeft = profile?.trial_end ? Math.ceil((new Date(profile.trial_end) - new Date()) / (1000 * 60 * 60 * 24)) : 0;
 
   return (
     <div className="space-y-6">
@@ -121,19 +133,28 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="space-y-3">
-            <button className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+            <button 
+              className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+              onClick={handleAddPlayer}
+            >
               <div className="flex items-center">
                 <SafeIcon icon={FiUsers} className="w-5 h-5 text-blue-600 mr-3" />
                 <span className="text-blue-700">Add New Player</span>
               </div>
             </button>
-            <button className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+            <button 
+              className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+              onClick={handleCreateHomework}
+            >
               <div className="flex items-center">
                 <SafeIcon icon={FiBookOpen} className="w-5 h-5 text-green-600 mr-3" />
                 <span className="text-green-700">Create Homework</span>
               </div>
             </button>
-            <button className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+            <button 
+              className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+              onClick={handleProcessPayment}
+            >
               <div className="flex items-center">
                 <SafeIcon icon={FiCreditCard} className="w-5 h-5 text-purple-600 mr-3" />
                 <span className="text-purple-700">Process Payment</span>

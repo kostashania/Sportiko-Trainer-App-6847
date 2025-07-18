@@ -9,7 +9,7 @@ const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn, user } = useAuth();
+  const { signIn } = useAuth();
   const { checkSuperadminStatus } = useSuperadmin();
   const navigate = useNavigate();
 
@@ -25,12 +25,10 @@ const LoginForm = () => {
         
         // Check if user is superadmin after login
         setTimeout(async () => {
-          if (user) {
-            await checkSuperadminStatus();
-          }
+          await checkSuperadminStatus();
           // Navigate to dashboard as default
           navigate('/dashboard');
-        }, 100);
+        }, 500);
       }
     } catch (error) {
       toast.error('An error occurred during login');

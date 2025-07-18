@@ -1,14 +1,16 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSuperadmin } from '../../contexts/SuperadminContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 
-const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut } = FiIcons;
+const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiShield } = FiIcons;
 
 const Sidebar = () => {
   const { signOut, profile } = useAuth();
+  const { isSuperadmin } = useSuperadmin();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -33,7 +35,7 @@ const Sidebar = () => {
         <h1 className="text-2xl font-bold text-blue-600">Sportiko Trainer</h1>
         <p className="text-sm text-gray-600 mt-1">{profile?.full_name}</p>
       </div>
-      
+
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
           {menuItems.map((item) => (
@@ -53,6 +55,25 @@ const Sidebar = () => {
               </NavLink>
             </li>
           ))}
+          
+          {/* Superadmin access link */}
+          {isSuperadmin && (
+            <li className="mt-6">
+              <NavLink
+                to="/superadmin/dashboard"
+                className={({ isActive }) =>
+                  `flex items-center px-4 py-3 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-purple-50 text-purple-600 border-r-2 border-purple-600'
+                      : 'text-purple-700 hover:bg-purple-50'
+                  }`
+                }
+              >
+                <SafeIcon icon={FiShield} className="w-5 h-5 mr-3" />
+                Admin Panel
+              </NavLink>
+            </li>
+          )}
         </ul>
       </nav>
 

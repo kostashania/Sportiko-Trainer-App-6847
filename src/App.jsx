@@ -21,6 +21,20 @@ import AdManagement from './components/superadmin/AdManagement';
 import InfoPage from './components/superadmin/InfoPage';
 import './App.css';
 
+// Create placeholder pages for routes that don't have components yet
+const PlaceholderPage = ({ title }) => (
+  <div className="p-6 bg-white rounded-lg shadow">
+    <h1 className="text-2xl font-bold text-gray-900 mb-4">{title}</h1>
+    <p className="text-gray-600">This feature is coming soon. We're working hard to bring you the best experience possible.</p>
+  </div>
+);
+
+const HomeworkPage = () => <PlaceholderPage title="Homework" />;
+const AssessmentsPage = () => <PlaceholderPage title="Assessments" />;
+const PaymentsPage = () => <PlaceholderPage title="Payments" />;
+const AdsPage = () => <PlaceholderPage title="Ads" />;
+const SettingsPage = () => <PlaceholderPage title="Settings" />;
+
 const App = () => {
   return (
     <ErrorBoundary>
@@ -34,16 +48,20 @@ const App = () => {
                 {/* Auth routes */}
                 <Route path="/login" element={<LoginForm />} />
                 <Route path="/register" element={<RegisterForm />} />
-
+                
                 {/* Trainer routes */}
                 <Route path="/" element={<Layout />}>
                   <Route index element={<Navigate to="/dashboard" replace />} />
                   <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                   <Route path="players" element={<ProtectedRoute><PlayersPage /></ProtectedRoute>} />
+                  <Route path="homework" element={<ProtectedRoute><HomeworkPage /></ProtectedRoute>} />
+                  <Route path="assessments" element={<ProtectedRoute><AssessmentsPage /></ProtectedRoute>} />
+                  <Route path="payments" element={<ProtectedRoute><PaymentsPage /></ProtectedRoute>} />
                   <Route path="shop" element={<ProtectedRoute><ShopPage /></ProtectedRoute>} />
-                  {/* Other trainer routes will be added here */}
+                  <Route path="ads" element={<ProtectedRoute><AdsPage /></ProtectedRoute>} />
+                  <Route path="settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
                 </Route>
-
+                
                 {/* Superadmin routes */}
                 <Route path="/superadmin" element={<SuperadminLayout />}>
                   <Route index element={<Navigate to="/superadmin/dashboard" replace />} />

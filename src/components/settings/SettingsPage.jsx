@@ -6,6 +6,7 @@ import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import CreateUsersButton from './CreateUsersButton';
 
 const { FiDatabase, FiShield, FiTable, FiUser, FiSettings, FiInfo, FiRefreshCw, FiLayers, FiKey } = FiIcons;
 
@@ -79,7 +80,7 @@ const SettingsPage = () => {
     ]
   };
   
-  // List of test users created
+  // List of test users that should be created
   const testUsers = [
     { email: 'superadmin_pt@sportiko.com', password: 'pass123', role: 'superadmin' },
     { email: 'trainer_pt@sportiko.com', password: 'pass123', role: 'trainer' },
@@ -480,9 +481,13 @@ const SettingsPage = () => {
   const renderTestUsersTab = () => (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Test Users</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Test Users</h3>
+          <CreateUsersButton />
+        </div>
+        
         <p className="text-sm text-gray-600 mb-4">
-          The following test users have been created for testing the application. All users have the password: <code className="bg-gray-100 px-2 py-1 rounded">pass123</code>
+          Create test users for the application. All users will have the password: <code className="bg-gray-100 px-2 py-1 rounded">pass123</code>
         </p>
         
         <div className="overflow-x-auto">

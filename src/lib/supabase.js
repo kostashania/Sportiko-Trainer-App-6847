@@ -16,16 +16,32 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // Get tenant schema based on user ID
 export const getTenantSchema = (userId) => {
-  return `trainer_${userId.replace(/-/g, '_')}`;
+  return `pt_${userId.replace(/-/g, '_')}`;
 };
 
-// Table names
-export const TABLES = {
+// Schema names
+export const SCHEMAS = {
+  MAIN: 'sportiko_pt',
+  TRAINER_PREFIX: 'pt_'
+};
+
+// Table names in main schema
+export const MAIN_TABLES = {
+  SUBSCRIPTION_PLANS: 'subscription_plans',
   TRAINERS: 'trainers',
-  SUPERADMINS: 'superadmins',
+  PLAYERS_AUTH: 'players_auth',
+  SETTINGS: 'settings',
+  ADS: 'ads'
+};
+
+// Table names in trainer schema
+export const TRAINER_TABLES = {
   PLAYERS: 'players',
-  SHOP_ITEMS: 'shop_items',
-  ADS: 'ads',
+  ASSESSMENTS: 'assessments',
+  EXERCISES: 'exercises',
+  HOMEWORK: 'homework',
+  HOMEWORK_ITEMS: 'homework_items',
+  PRODUCTS: 'products',
   ORDERS: 'orders',
   ORDER_ITEMS: 'order_items'
 };

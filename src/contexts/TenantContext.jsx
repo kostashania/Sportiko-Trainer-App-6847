@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { supabase, getTenantSchema } from '../lib/supabase';
+import { supabase, getTenantSchema, SCHEMAS } from '../lib/supabase';
 
 const TenantContext = createContext({});
 
@@ -36,6 +36,11 @@ export const TenantProvider = ({ children }) => {
     return supabase.from(`${tenantSchema}.${tableName}`);
   };
 
+  // Helper function to query main schema tables
+  const queryMainTable = (tableName) => {
+    return supabase.from(`${SCHEMAS.MAIN}.${tableName}`);
+  };
+
   // Helper function to get tenant bucket operations
   const getTenantStorage = () => {
     if (!user) {
@@ -48,6 +53,7 @@ export const TenantProvider = ({ children }) => {
     tenantSchema,
     tenantReady,
     queryTenantTable,
+    queryMainTable,
     getTenantStorage
   };
 

@@ -82,18 +82,7 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // Try to fetch from actual Supabase
-      const { data: trainerData, error: trainerError } = await supabase
-        .from('trainers')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (!trainerError) {
-        setProfile({ ...trainerData, role: 'trainer' });
-        return;
-      }
-
+      // Try to fetch from actual Supabase - first check if user is a superadmin
       const { data: adminData, error: adminError } = await supabase
         .from('superadmins')
         .select('*')
@@ -101,7 +90,44 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (!adminError) {
-        setProfile({ ...adminData, role: 'superadmin' });
+        setProfile({
+          ...adminData,
+          role: 'superadmin',
+          full_name: adminData.full_name || user.user_metadata?.full_name || 'Super Admin'
+        });
+        return;
+      }
+
+      // Check if user is a trainer
+      const { data: trainerData, error: trainerError } = await supabase
+        .from('trainers')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (!trainerError) {
+        setProfile({
+          ...trainerData,
+          role: 'trainer',
+          full_name: trainerData.full_name || user.user_metadata?.full_name || 'Trainer'
+        });
+        return;
+      }
+
+      // Check if user is a player (in players_auth table)
+      const { data: playerData, error: playerError } = await supabase
+        .from('players_auth')
+        .select('*, trainers:trainer_id(*)')
+        .eq('id', user.id)
+        .single();
+
+      if (!playerError) {
+        setProfile({
+          ...playerData,
+          role: 'player',
+          full_name: user.user_metadata?.full_name || 'Player',
+          trainer_id: playerData.trainer_id
+        });
         return;
       }
 

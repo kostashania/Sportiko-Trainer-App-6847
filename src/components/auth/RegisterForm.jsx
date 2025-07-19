@@ -24,7 +24,7 @@ const RegisterForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
       return;
@@ -38,7 +38,12 @@ const RegisterForm = () => {
     setLoading(true);
 
     try {
-      const { error } = await signUp(formData.email, formData.password, formData.fullName);
+      const { error } = await signUp(
+        formData.email,
+        formData.password,
+        formData.fullName
+      );
+
       if (error) {
         console.error('Registration error:', error);
         toast.error(error.message || 'An error occurred during registration');
@@ -149,6 +154,17 @@ const RegisterForm = () => {
                 Sign in
               </Link>
             </p>
+          </div>
+
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">
+              For demo purposes, you can use the existing demo accounts:
+            </p>
+            <ul className="text-xs text-gray-600 mt-2 space-y-1">
+              <li><strong>Superadmin:</strong> superadmin_pt@sportiko.eu / pass123</li>
+              <li><strong>Trainer:</strong> trainer_pt@sportiko.eu / pass123</li>
+              <li><strong>Player:</strong> player_pt@sportiko.eu / pass123</li>
+            </ul>
           </div>
         </form>
       </motion.div>

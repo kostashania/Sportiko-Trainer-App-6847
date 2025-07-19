@@ -6,8 +6,8 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 const LoginForm = () => {
-  const [email, setEmail] = useState('admin@sportiko.com');
-  const [password, setPassword] = useState('Admin123!');
+  const [email, setEmail] = useState('superadmin_pt@sportiko.eu');
+  const [password, setPassword] = useState('pass123');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const { checkSuperadminStatus } = useSuperadmin();
@@ -110,9 +110,9 @@ const LoginForm = () => {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
             <div className="text-xs text-gray-600 space-y-1">
-              <p><strong>Email:</strong> admin@sportiko.com</p>
-              <p><strong>Password:</strong> Admin123!</p>
-              <p><strong>Alternative:</strong> superadmin@sportiko.eu (same password)</p>
+              <p><strong>Superadmin:</strong> superadmin_pt@sportiko.eu / pass123</p>
+              <p><strong>Trainer:</strong> trainer_pt@sportiko.eu / pass123</p>
+              <p><strong>Player:</strong> player_pt@sportiko.eu / pass123</p>
             </div>
           </div>
         </form>

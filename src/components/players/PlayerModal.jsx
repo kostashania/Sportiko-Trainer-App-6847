@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 const { FiX, FiUser, FiMail, FiPhone, FiCalendar, FiTarget } = FiIcons;
 
 const PlayerModal = ({ player, onClose, onSave }) => {
-  const { queryTenantTable } = useTenant();
+  const { queryTenantTable, tenantSchema } = useTenant();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -40,8 +40,12 @@ const PlayerModal = ({ player, onClose, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-
+    
     try {
+      if (!tenantSchema) {
+        throw new Error('Tenant schema not available');
+      }
+
       if (player) {
         // Update existing player
         const { data, error } = await queryTenantTable('players')
@@ -49,8 +53,9 @@ const PlayerModal = ({ player, onClose, onSave }) => {
           .eq('id', player.id)
           .select()
           .single();
-
+          
         if (error) throw error;
+        
         toast.success('Player updated successfully');
         onSave(data);
       } else {
@@ -59,14 +64,23 @@ const PlayerModal = ({ player, onClose, onSave }) => {
           .insert([formData])
           .select()
           .single();
-
+          
         if (error) throw error;
+        
         toast.success('Player created successfully');
         onSave(data);
       }
     } catch (error) {
       console.error('Error saving player:', error);
-      toast.error('Failed to save player');
+      
+      // More specific error messages
+      if (error.message.includes('does not exist')) {
+        toast.error(`Player table does not exist in schema. Please make sure the tenant schema is properly created.`);
+      } else if (error.message.includes('permission denied')) {
+        toast.error(`Permission denied. Please check your access rights.`);
+      } else {
+        toast.error('Failed to save player');
+      }
     } finally {
       setLoading(false);
     }

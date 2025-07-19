@@ -11,12 +11,10 @@ const CreateUsersButton = () => {
 
   const handleCreateUsers = async () => {
     setLoading(true);
-    
     try {
       toast.loading('Creating test users...', { id: 'create-users' });
       
       const results = await createTestUsers();
-      
       const successful = results.filter(r => r.success);
       const failed = results.filter(r => !r.success);
       
@@ -34,7 +32,6 @@ const CreateUsersButton = () => {
         );
         console.log('Failed users:', failed);
       }
-      
     } catch (error) {
       console.error('Error in user creation process:', error);
       toast.error('Error creating test users', { id: 'create-users' });
@@ -49,9 +46,9 @@ const CreateUsersButton = () => {
       disabled={loading}
       className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
-      <SafeIcon 
-        icon={loading ? FiLoader : FiPlus} 
-        className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} 
+      <SafeIcon
+        icon={loading ? FiLoader : FiPlus}
+        className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`}
       />
       {loading ? 'Creating Users...' : 'Create Test Users'}
     </button>

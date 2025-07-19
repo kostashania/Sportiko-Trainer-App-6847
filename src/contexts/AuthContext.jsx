@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, demoAuth } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext({});
@@ -21,17 +21,21 @@ export const AuthProvider = ({ children }) => {
     // Check for demo user in localStorage first
     const demoUser = localStorage.getItem('sportiko_user');
     if (demoUser) {
-      const parsedUser = JSON.parse(demoUser);
-      setUser(parsedUser);
-      setProfile({
-        id: parsedUser.id,
-        full_name: 'Demo Admin',
-        email: parsedUser.email,
-        role: 'superadmin',
-        trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-      });
-      setLoading(false);
-      return;
+      try {
+        const parsedUser = JSON.parse(demoUser);
+        setUser(parsedUser);
+        
+        // Get the full profile for the demo user
+        const demoProfile = demoAuth.getDemoUser(parsedUser.email);
+        if (demoProfile) {
+          setProfile(demoProfile);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error('Error parsing stored user:', e);
+        localStorage.removeItem('sportiko_user');
+      }
     }
 
     // Get initial session from Supabase if no demo user
@@ -40,7 +44,7 @@ export const AuthProvider = ({ children }) => {
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
         if (session?.user) {
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user);
         }
       } catch (error) {
         console.error('Error getting session:', error);
@@ -56,7 +60,7 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) {
-          await fetchProfile(session.user.id);
+          await fetchProfile(session.user);
         } else {
           setProfile(null);
         }
@@ -67,25 +71,22 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchProfile = async (userId) => {
+  const fetchProfile = async (user) => {
     try {
-      // For demo purposes, if we're using the demo user, create a mock profile
-      if (userId === 'demo-admin-id') {
-        setProfile({
-          id: userId,
-          full_name: 'Demo Admin',
-          email: 'admin@sportiko.com',
-          role: 'superadmin',
-          trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        });
-        return;
+      // For demo users, use the demo profile
+      if (demoAuth.isDemoUser(user.email)) {
+        const demoProfile = demoAuth.getDemoUser(user.email);
+        if (demoProfile) {
+          setProfile(demoProfile);
+          return;
+        }
       }
 
       // Try to fetch from actual Supabase
       const { data: trainerData, error: trainerError } = await supabase
         .from('trainers')
         .select('*')
-        .eq('id', userId)
+        .eq('id', user.id)
         .single();
 
       if (!trainerError) {
@@ -96,7 +97,7 @@ export const AuthProvider = ({ children }) => {
       const { data: adminData, error: adminError } = await supabase
         .from('superadmins')
         .select('*')
-        .eq('id', userId)
+        .eq('id', user.id)
         .single();
 
       if (!adminError) {
@@ -104,34 +105,46 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      console.error('No profile found');
+      console.error('No profile found for user:', user.email);
+      // Create a fallback profile with basic information
+      setProfile({
+        id: user.id,
+        email: user.email,
+        full_name: user.user_metadata?.full_name || 'User',
+        role: 'trainer', // Default role
+        trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+      });
     } catch (error) {
       console.error('Error fetching profile:', error);
+      // Create a fallback profile with basic information
+      if (user) {
+        setProfile({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || 'User',
+          role: 'trainer', // Default role
+          trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+        });
+      }
     }
   };
 
   const signIn = async (email, password) => {
     try {
-      // Special case for demo user
-      if (email === 'admin@sportiko.com' && password === 'Admin123!') {
-        const demoUser = {
-          id: 'demo-admin-id',
-          email: email,
-          role: 'admin'
-        };
-        setUser(demoUser);
-        localStorage.setItem('sportiko_user', JSON.stringify(demoUser));
+      // Check if this is a demo user
+      if (demoAuth.isDemoUser(email)) {
+        const { data, error } = demoAuth.signIn(email, password);
         
-        // Set demo profile
-        setProfile({
-          id: 'demo-admin-id',
-          full_name: 'Demo Admin',
-          email: email,
-          role: 'superadmin',
-          trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-        });
+        if (error) {
+          throw error;
+        }
         
-        return { data: { user: demoUser }, error: null };
+        const demoProfile = demoAuth.getDemoUser(email);
+        setUser(data.user);
+        setProfile(demoProfile);
+        localStorage.setItem('sportiko_user', JSON.stringify(data.user));
+        
+        return { data, error: null };
       }
       
       // Otherwise, try actual Supabase login
@@ -141,6 +154,12 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
+      
+      // Fetch profile after successful login
+      if (data.user) {
+        await fetchProfile(data.user);
+      }
+      
       return { data, error: null };
     } catch (error) {
       console.error('Login error:', error);
@@ -150,8 +169,9 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     try {
-      // Check if we're using demo user
-      if (user?.id === 'demo-admin-id') {
+      // Check if we're using a demo user
+      const demoUser = localStorage.getItem('sportiko_user');
+      if (demoUser) {
         localStorage.removeItem('sportiko_user');
         setUser(null);
         setProfile(null);
@@ -165,12 +185,26 @@ export const AuthProvider = ({ children }) => {
       setProfile(null);
       return { error: null };
     } catch (error) {
+      console.error('Sign out error:', error);
+      // Even if there's an error, clear the local state
+      localStorage.removeItem('sportiko_user');
+      setUser(null);
+      setProfile(null);
       return { error };
     }
   };
 
   const signUp = async (email, password, fullName) => {
     try {
+      // For demo purposes, we can simulate signup success for demo users
+      if (demoAuth.isDemoUser(email)) {
+        const demoProfile = demoAuth.getDemoUser(email);
+        return { 
+          data: { user: demoProfile },
+          error: null
+        };
+      }
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,

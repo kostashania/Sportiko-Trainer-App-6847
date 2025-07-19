@@ -18,42 +18,24 @@ const LoginForm = () => {
     setLoading(true);
     
     try {
-      // For demo purposes, bypass actual authentication with Supabase
-      // and just use hardcoded credentials
-      if (email === 'admin@sportiko.com' && password === 'Admin123!') {
+      const { data, error } = await signIn(email, password);
+      
+      if (error) {
+        console.error('Login error:', error);
+        toast.error(error.message || 'Invalid credentials. Please try again.');
+      } else {
         toast.success('Welcome back!');
         
-        // Simulate successful login
-        localStorage.setItem('sportiko_user', JSON.stringify({
-          id: 'demo-admin-id',
-          email: email,
-          role: 'admin'
-        }));
-        
-        // Navigate to dashboard after simulated login
-        setTimeout(() => {
+        // Check if user is superadmin after login
+        setTimeout(async () => {
+          await checkSuperadminStatus();
+          // Navigate to dashboard as default
           navigate('/dashboard');
         }, 500);
-      } else {
-        // Try actual Supabase login as fallback
-        const { error } = await signIn(email, password);
-        if (error) {
-          console.error('Login error:', error);
-          toast.error('Invalid credentials. Try using the demo account.');
-        } else {
-          toast.success('Welcome back!');
-          
-          // Check if user is superadmin after login
-          setTimeout(async () => {
-            await checkSuperadminStatus();
-            // Navigate to dashboard as default
-            navigate('/dashboard');
-          }, 500);
-        }
       }
     } catch (error) {
       console.error('Login error:', error);
-      toast.error('An error occurred during login. Try using the demo account.');
+      toast.error('An error occurred during login. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -128,8 +110,9 @@ const LoginForm = () => {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
             <div className="text-xs text-gray-600 space-y-1">
-              <p><strong>Email:</strong> admin@sportiko.com / Password: Admin123!</p>
-              <p><strong>Note:</strong> These credentials are pre-filled for demo purposes.</p>
+              <p><strong>Email:</strong> admin@sportiko.com</p>
+              <p><strong>Password:</strong> Admin123!</p>
+              <p><strong>Alternative:</strong> superadmin@sportiko.eu (same password)</p>
             </div>
           </div>
         </form>

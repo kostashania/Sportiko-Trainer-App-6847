@@ -1,48 +1,64 @@
 import React from 'react';
-import {NavLink, useNavigate, useLocation} from 'react-router-dom';
-import {useAuth} from '../../contexts/AuthContext';
-import {useSuperadmin} from '../../contexts/SuperadminContext';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { useSuperadmin } from '../../contexts/SuperadminContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
+import toast from 'react-hot-toast';
 
-const {FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiShield} = FiIcons;
+const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiShield } = FiIcons;
 
 const Sidebar = () => {
-  const {signOut, profile} = useAuth();
-  const {isSuperadmin} = useSuperadmin();
+  const { signOut, profile } = useAuth();
+  const { isSuperadmin } = useSuperadmin();
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleSignOut = async () => {
-    const {error} = await signOut();
-    if (!error) {
-      navigate('/login');
+    toast.loading('Signing out...', { id: 'signout' });
+    try {
+      const { error } = await signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        toast.error('Failed to sign out. Please try again.', { id: 'signout' });
+      } else {
+        toast.success('Signed out successfully', { id: 'signout' });
+        navigate('/login');
+      }
+    } catch (e) {
+      console.error('Exception during sign out:', e);
+      toast.error('An error occurred. Please try again.', { id: 'signout' });
+      // Force navigation to login page even if there was an error
+      setTimeout(() => {
+        navigate('/login');
+      }, 1000);
     }
   };
 
   const menuItems = [
-    {path: '/dashboard', icon: FiHome, label: 'Dashboard'},
-    {path: '/players', icon: FiUsers, label: 'Players'},
-    {path: '/homework', icon: FiBookOpen, label: 'Homework'},
-    {path: '/assessments', icon: FiClipboard, label: 'Assessments'},
-    {path: '/payments', icon: FiCreditCard, label: 'Payments'},
-    {path: '/shop', icon: FiShoppingBag, label: 'Shop'},
-    {path: '/ads', icon: FiMegaphone, label: 'Ads'},
-    {path: '/settings', icon: FiSettings, label: 'Settings'}
+    { path: '/dashboard', icon: FiHome, label: 'Dashboard' },
+    { path: '/players', icon: FiUsers, label: 'Players' },
+    { path: '/homework', icon: FiBookOpen, label: 'Homework' },
+    { path: '/assessments', icon: FiClipboard, label: 'Assessments' },
+    { path: '/payments', icon: FiCreditCard, label: 'Payments' },
+    { path: '/shop', icon: FiShoppingBag, label: 'Shop' },
+    { path: '/ads', icon: FiMegaphone, label: 'Ads' },
+    { path: '/settings', icon: FiSettings, label: 'Settings' }
   ];
-  
+
   return (
     <div className="w-64 bg-white shadow-lg flex flex-col h-full">
       <div className="p-6 border-b">
         <h1 className="text-2xl font-bold text-blue-600">Sportiko Trainer</h1>
         <p className="text-sm text-gray-600 mt-1">{profile?.full_name}</p>
       </div>
+
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-2">
           {menuItems.map((item) => (
             <li key={item.path}>
-              <NavLink 
-                to={item.path} 
+              <NavLink
+                to={item.path}
                 className={({isActive}) => 
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
                     isActive 
@@ -57,10 +73,11 @@ const Sidebar = () => {
               </NavLink>
             </li>
           ))}
+
           {isSuperadmin && (
             <li className="mt-6">
-              <NavLink 
-                to="/superadmin/dashboard" 
+              <NavLink
+                to="/superadmin/dashboard"
                 className={({isActive}) => 
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
                     isActive 
@@ -77,8 +94,9 @@ const Sidebar = () => {
           )}
         </ul>
       </nav>
+
       <div className="p-4 border-t">
-        <button 
+        <button
           onClick={handleSignOut}
           className="flex items-center w-full px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
         >

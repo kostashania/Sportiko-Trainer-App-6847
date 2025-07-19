@@ -1,27 +1,44 @@
 import React from 'react';
-import {NavLink, useNavigate} from 'react-router-dom';
-import {useAuth} from '../../contexts/AuthContext';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import {motion} from 'framer-motion';
+import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 
-const {FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiDatabase} = FiIcons;
+const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiDatabase } = FiIcons;
 
 const SuperadminSidebar = () => {
-  const {signOut} = useAuth();
+  const { signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
+    toast.loading('Signing out...', { id: 'signout' });
+    try {
+      const { error } = await signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        toast.error('Failed to sign out. Please try again.', { id: 'signout' });
+      } else {
+        toast.success('Signed out successfully', { id: 'signout' });
+        navigate('/login');
+      }
+    } catch (e) {
+      console.error('Exception during sign out:', e);
+      toast.error('An error occurred. Please try again.', { id: 'signout' });
+      // Force navigation to login page even if there was an error
+      setTimeout(() => {
+        navigate('/login');
+      }, 1000);
+    }
   };
 
   const menuItems = [
-    {path: '/superadmin/dashboard', icon: FiHome, label: 'Dashboard'},
-    {path: '/superadmin/trainers', icon: FiUsers, label: 'Trainers'},
-    {path: '/superadmin/shop', icon: FiShoppingBag, label: 'Shop'},
-    {path: '/superadmin/ads', icon: FiMegaphone, label: 'Ads'},
-    {path: '/superadmin/info', icon: FiDatabase, label: 'System Info'}
+    { path: '/superadmin/dashboard', icon: FiHome, label: 'Dashboard' },
+    { path: '/superadmin/trainers', icon: FiUsers, label: 'Trainers' },
+    { path: '/superadmin/shop', icon: FiShoppingBag, label: 'Shop' },
+    { path: '/superadmin/ads', icon: FiMegaphone, label: 'Ads' },
+    { path: '/superadmin/info', icon: FiDatabase, label: 'System Info' }
   ];
 
   return (
@@ -30,12 +47,13 @@ const SuperadminSidebar = () => {
         <h1 className="text-2xl font-bold text-blue-600">Sportiko Admin</h1>
         <p className="text-sm text-gray-600 mt-1">Superadmin Panel</p>
       </div>
+
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-2">
           {menuItems.map((item) => (
             <li key={item.path}>
-              <NavLink 
-                to={item.path} 
+              <NavLink
+                to={item.path}
                 className={({isActive}) => 
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
                     isActive 
@@ -52,8 +70,9 @@ const SuperadminSidebar = () => {
           ))}
         </ul>
       </nav>
+
       <div className="p-4 border-t">
-        <button 
+        <button
           onClick={handleSignOut}
           className="flex items-center w-full px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
         >

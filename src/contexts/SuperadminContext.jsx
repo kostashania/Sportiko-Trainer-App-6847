@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase, demoAuth } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const SuperadminContext = createContext({});
@@ -14,7 +14,7 @@ export const useSuperadmin = () => {
 };
 
 export const SuperadminProvider = ({ children }) => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -29,9 +29,17 @@ export const SuperadminProvider = ({ children }) => {
 
   const checkSuperadminStatus = async () => {
     try {
-      // Special case for demo user
-      if (user?.id === 'demo-admin-id') {
-        setIsSuperadmin(true);
+      // Check if this is a demo user
+      if (user && demoAuth.isDemoUser(user.email)) {
+        const demoProfile = demoAuth.getDemoUser(user.email);
+        setIsSuperadmin(demoProfile.role === 'superadmin');
+        setLoading(false);
+        return;
+      }
+      
+      // Check profile directly if available
+      if (profile) {
+        setIsSuperadmin(profile.role === 'superadmin');
         setLoading(false);
         return;
       }

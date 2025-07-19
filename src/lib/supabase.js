@@ -17,20 +17,20 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: true
   },
   global: {
-    headers: {'X-Client-Info': 'sportiko-trainer@1.0.0'}
+    headers: {
+      'X-Client-Info': 'sportiko-trainer@1.0.0'
+    }
   }
 });
 
 // Create admin client for service operations (only use server-side or in secure contexts)
 const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-export const supabaseAdmin = serviceRoleKey 
-  ? createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    })
-  : null;
+export const supabaseAdmin = serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+}) : null;
 
 // Connection status checker
 export const checkSupabaseConnection = async () => {
@@ -139,7 +139,6 @@ export const demoAuth = {
         error: null
       };
     }
-
     return {
       data: null,
       error: { message: 'Invalid credentials' }
@@ -155,12 +154,12 @@ export const createTenantSchema = async (trainerId) => {
     
     // Use admin client if available, otherwise regular client
     const client = supabaseAdmin || supabase;
-
+    
     // Create the schema using RPC function
     const { error } = await client.rpc('create_tenant_schema', {
       trainer_id: trainerId
     });
-
+    
     if (error) {
       console.error('Error creating tenant schema:', error);
       
@@ -184,23 +183,23 @@ export const createTenantSchema = async (trainerId) => {
           ALTER TABLE ${schemaName}.players ENABLE ROW LEVEL SECURITY;
           
           -- Create RLS policies for the trainer
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.players 
-            FOR ALL TO authenticated 
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.players
+            FOR ALL TO authenticated
             USING (auth.uid()='${trainerId}')
             WITH CHECK (auth.uid()='${trainerId}');
-            
+          
           -- Grant usage to authenticated users
           GRANT USAGE ON SCHEMA ${schemaName} TO authenticated;
           GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO authenticated;
         `
       });
-
+      
       if (sqlError) {
         console.error('Error creating tenant schema with SQL:', sqlError);
         return false;
       }
     }
-
+    
     return true;
   } catch (error) {
     console.error('Exception creating tenant schema:', error);

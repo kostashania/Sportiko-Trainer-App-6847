@@ -132,6 +132,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.error('No profile found for user:', user.email);
+      
       // Create a fallback profile with basic information
       setProfile({
         id: user.id,
@@ -142,6 +143,7 @@ export const AuthProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('Error fetching profile:', error);
+      
       // Create a fallback profile with basic information
       if (user) {
         setProfile({
@@ -164,7 +166,7 @@ export const AuthProvider = ({ children }) => {
         if (error) {
           throw error;
         }
-        
+
         const demoProfile = demoAuth.getDemoUser(email);
         setUser(data.user);
         setProfile(demoProfile);
@@ -172,7 +174,7 @@ export const AuthProvider = ({ children }) => {
         
         return { data, error: null };
       }
-      
+
       // Otherwise, try actual Supabase login
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -180,12 +182,12 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
-      
+
       // Fetch profile after successful login
       if (data.user) {
         await fetchProfile(data.user);
       }
-      
+
       return { data, error: null };
     } catch (error) {
       console.error('Login error:', error);
@@ -203,10 +205,11 @@ export const AuthProvider = ({ children }) => {
         setProfile(null);
         return { error: null };
       }
-      
+
       // Otherwise use Supabase signOut
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+
       setUser(null);
       setProfile(null);
       return { error: null };
@@ -225,17 +228,19 @@ export const AuthProvider = ({ children }) => {
       // For demo purposes, we can simulate signup success for demo users
       if (demoAuth.isDemoUser(email)) {
         const demoProfile = demoAuth.getDemoUser(email);
-        return { 
+        return {
           data: { user: demoProfile },
           error: null
         };
       }
-      
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName }
+          data: {
+            full_name: fullName
+          }
         }
       });
 

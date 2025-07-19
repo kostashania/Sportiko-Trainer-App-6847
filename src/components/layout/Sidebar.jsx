@@ -51,6 +51,17 @@ const Sidebar = () => {
       <div className="p-6 border-b">
         <h1 className="text-2xl font-bold text-blue-600">Sportiko Trainer</h1>
         <p className="text-sm text-gray-600 mt-1">{profile?.full_name}</p>
+        {profile?.role && (
+          <span className={`inline-block px-2 py-1 text-xs rounded-full mt-1 ${
+            profile.role === 'superadmin' 
+              ? 'bg-purple-100 text-purple-800' 
+              : profile.role === 'trainer'
+              ? 'bg-blue-100 text-blue-800'
+              : 'bg-green-100 text-green-800'
+          }`}>
+            {profile.role}
+          </span>
+        )}
       </div>
 
       <nav className="flex-1 p-4 overflow-y-auto">
@@ -59,10 +70,10 @@ const Sidebar = () => {
             <li key={item.path}>
               <NavLink
                 to={item.path}
-                className={({isActive}) => 
+                className={({ isActive }) =>
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
-                    isActive 
-                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' 
+                    isActive
+                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
                       : 'text-gray-700 hover:bg-gray-50'
                   }`
                 }
@@ -78,10 +89,10 @@ const Sidebar = () => {
             <li className="mt-6">
               <NavLink
                 to="/superadmin/dashboard"
-                className={({isActive}) => 
+                className={({ isActive }) =>
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
-                    isActive 
-                      ? 'bg-purple-50 text-purple-600 border-r-2 border-purple-600' 
+                    isActive
+                      ? 'bg-purple-50 text-purple-600 border-r-2 border-purple-600'
                       : 'text-purple-700 hover:bg-purple-50'
                   }`
                 }

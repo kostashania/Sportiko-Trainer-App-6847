@@ -16,10 +16,10 @@ const LoginForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const { data, error } = await signIn(email, password);
-      
+
       if (error) {
         console.error('Login error:', error);
         toast.error(error.message || 'Invalid credentials. Please try again.');
@@ -110,9 +110,9 @@ const LoginForm = () => {
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
             <h4 className="text-sm font-medium text-gray-700 mb-2">Demo Credentials:</h4>
             <div className="text-xs text-gray-600 space-y-1">
-              <p><strong>Superadmin:</strong> superadmin_pt@sportiko.eu / pass123</p>
-              <p><strong>Trainer:</strong> trainer_pt@sportiko.eu / pass123</p>
-              <p><strong>Player:</strong> player_pt@sportiko.eu / pass123</p>
+              <p><strong>Superadmin:</strong> superadmin_pt@sportiko.eu / any password</p>
+              <p><strong>Trainer:</strong> trainer_pt@sportiko.eu / any password</p>
+              <p><strong>Player:</strong> player_pt@sportiko.eu / any password</p>
             </div>
           </div>
         </form>

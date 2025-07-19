@@ -19,13 +19,13 @@ export const SuperadminProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
+    if (user && profile) {
       checkSuperadminStatus();
     } else {
       setIsSuperadmin(false);
       setLoading(false);
     }
-  }, [user]);
+  }, [user, profile]);
 
   const checkSuperadminStatus = async () => {
     try {
@@ -36,14 +36,14 @@ export const SuperadminProvider = ({ children }) => {
         setLoading(false);
         return;
       }
-      
+
       // Check profile directly if available
       if (profile) {
         setIsSuperadmin(profile.role === 'superadmin');
         setLoading(false);
         return;
       }
-      
+
       // Safety check to prevent errors when user is null
       if (!user || !user.id) {
         setIsSuperadmin(false);

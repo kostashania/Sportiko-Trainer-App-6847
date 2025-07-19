@@ -1,9 +1,9 @@
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './contexts/AuthContext';
-import { SuperadminProvider } from './contexts/SuperadminContext';
-import { TenantProvider } from './contexts/TenantContext';
+import {HashRouter as Router, Routes, Route, Navigate} from 'react-router-dom';
+import {Toaster} from 'react-hot-toast';
+import {AuthProvider} from './contexts/AuthContext';
+import {SuperadminProvider} from './contexts/SuperadminContext';
+import {TenantProvider} from './contexts/TenantContext';
 import Layout from './components/layout/Layout';
 import SuperadminLayout from './components/layout/SuperadminLayout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -14,6 +14,7 @@ import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/dashboard/Dashboard';
 import PlayersPage from './components/players/PlayersPage';
 import ShopPage from './components/shop/ShopPage';
+import SettingsPage from './components/settings/SettingsPage';
 import SuperadminDashboard from './components/superadmin/SuperadminDashboard';
 import TrainerManagement from './components/superadmin/TrainerManagement';
 import ShopManagement from './components/superadmin/ShopManagement';
@@ -22,7 +23,7 @@ import InfoPage from './components/superadmin/InfoPage';
 import './App.css';
 
 // Create placeholder pages for routes that don't have components yet
-const PlaceholderPage = ({ title }) => (
+const PlaceholderPage = ({title}) => (
   <div className="p-6 bg-white rounded-lg shadow">
     <h1 className="text-2xl font-bold text-gray-900 mb-4">{title}</h1>
     <p className="text-gray-600">This feature is coming soon. We're working hard to bring you the best experience possible.</p>
@@ -33,7 +34,6 @@ const HomeworkPage = () => <PlaceholderPage title="Homework" />;
 const AssessmentsPage = () => <PlaceholderPage title="Assessments" />;
 const PaymentsPage = () => <PlaceholderPage title="Payments" />;
 const AdsPage = () => <PlaceholderPage title="Ads" />;
-const SettingsPage = () => <PlaceholderPage title="Settings" />;
 
 const App = () => {
   return (

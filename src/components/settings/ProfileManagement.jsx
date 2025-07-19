@@ -6,7 +6,7 @@ import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const { FiUser, FiMail, FiCalendar, FiSave, FiCamera } = FiIcons;
+const { FiUser, FiMail, FiCalendar, FiSave, FiCamera, FiKey } = FiIcons;
 
 const ProfileManagement = () => {
   const { user, profile, fetchProfile } = useAuth();
@@ -51,24 +51,19 @@ const ProfileManagement = () => {
         updated_at: new Date().toISOString()
       };
 
-      // Update based on user role
+      let tableName = 'trainers'; // default table
       if (profile?.role === 'superadmin') {
-        const { error } = await supabase
-          .from('superadmins')
-          .update(updateData)
-          .eq('id', user.id);
-
-        if (error) throw error;
-      } else if (profile?.role === 'trainer') {
-        const { error } = await supabase
-          .from('trainers')
-          .update(updateData)
-          .eq('id', user.id);
-
-        if (error) throw error;
+        tableName = 'superadmins';
       }
 
-      // Update auth user metadata if name changed
+      const { error } = await supabase
+        .from(tableName)
+        .update(updateData)
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Update auth user metadata
       if (formData.full_name !== profile?.full_name) {
         const { error: authError } = await supabase.auth.updateUser({
           data: { full_name: formData.full_name }
@@ -101,26 +96,51 @@ const ProfileManagement = () => {
 
     setLoading(true);
     try {
+      // First, create the bucket if it doesn't exist
+      const { error: bucketError } = await supabase.storage.createBucket('avatars', {
+        public: false,
+        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif'],
+        fileSizeLimit: 5242880 // 5MB
+      });
+
+      if (bucketError && !bucketError.message.includes('already exists')) {
+        throw bucketError;
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
+      const filePath = `${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('sportiko-trainer')
-        .upload(filePath, file);
+      const { error: uploadError, data } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          upsert: true
+        });
 
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage
-        .from('sportiko-trainer')
+      const { data: urlData } = supabase.storage
+        .from('avatars')
         .getPublicUrl(filePath);
+
+      if (!urlData?.publicUrl) throw new Error('Could not get public URL');
 
       setFormData({
         ...formData,
-        avatar_url: data.publicUrl
+        avatar_url: urlData.publicUrl
       });
 
+      // Save the avatar URL immediately
+      const tableName = profile?.role === 'superadmin' ? 'superadmins' : 'trainers';
+      const { error: updateError } = await supabase
+        .from(tableName)
+        .update({ avatar_url: urlData.publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
       toast.success('Avatar uploaded successfully!');
+      await fetchProfile(user);
     } catch (error) {
       console.error('Error uploading avatar:', error);
       toast.error('Failed to upload avatar');
@@ -165,6 +185,15 @@ const ProfileManagement = () => {
           <div>
             <h4 className="text-sm font-medium text-gray-900">Profile Photo</h4>
             <p className="text-sm text-gray-500">JPG, GIF or PNG. Max size 5MB.</p>
+          </div>
+        </div>
+
+        {/* User ID Display */}
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <SafeIcon icon={FiKey} className="w-4 h-4 text-gray-500" />
+            <span className="text-sm text-gray-600">User ID:</span>
+            <code className="text-xs bg-gray-100 px-2 py-1 rounded">{user?.id}</code>
           </div>
         </div>
 

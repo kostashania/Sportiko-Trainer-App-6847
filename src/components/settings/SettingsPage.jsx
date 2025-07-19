@@ -109,13 +109,24 @@ const SettingsPage = () => {
   const loadSchemas = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('sportiko_pt.get_schemas_info');
-      if (error) {
-        console.error('Error loading schemas:', error);
-        // Fall back to demo data if the RPC isn't available
-        setSchemas(demoSchemas);
+      // First try the new function path
+      const { data: schemaData, error: schemaError } = await supabase.rpc('get_schemas_info');
+      
+      if (schemaError) {
+        console.error('Error loading schemas with get_schemas_info:', schemaError);
+        
+        // Try alternative path
+        const { data: altData, error: altError } = await supabase.rpc('sportiko_pt.get_schemas_info');
+        
+        if (altError) {
+          console.error('Error loading schemas with sportiko_pt.get_schemas_info:', altError);
+          // Fall back to demo data
+          setSchemas(demoSchemas);
+        } else {
+          setSchemas(altData || demoSchemas);
+        }
       } else {
-        setSchemas(data || demoSchemas);
+        setSchemas(schemaData || demoSchemas);
       }
     } catch (error) {
       console.error('Error loading schemas:', error);
@@ -130,29 +141,71 @@ const SettingsPage = () => {
     setLoading(true);
     try {
       // Get tables for selected schema
-      const { data: tablesData, error: tablesError } = await supabase.rpc(
-        'sportiko_pt.get_tables_info',
-        { schema_name: selectedSchema }
-      );
-
+      let tablesData = null;
+      let tablesError = null;
+      
+      try {
+        // First try the new function path
+        const result = await supabase.rpc('get_tables_info', { schema_name: selectedSchema });
+        tablesData = result.data;
+        tablesError = result.error;
+      } catch (err) {
+        console.error('Error calling get_tables_info:', err);
+        tablesError = err;
+      }
+      
       if (tablesError) {
         console.error('Error loading tables:', tablesError);
-        // Fall back to demo data
-        setTables(demoTables[selectedSchema] || []);
+        // Try alternative path
+        try {
+          const altResult = await supabase.rpc('sportiko_pt.get_tables_info', { schema_name: selectedSchema });
+          if (altResult.error) {
+            console.error('Error with alternative tables function:', altResult.error);
+            // Fall back to demo data
+            setTables(demoTables[selectedSchema] || []);
+          } else {
+            setTables(altResult.data || demoTables[selectedSchema] || []);
+          }
+        } catch (e) {
+          console.error('Exception in alternative tables function:', e);
+          // Fall back to demo data
+          setTables(demoTables[selectedSchema] || []);
+        }
       } else {
         setTables(tablesData || demoTables[selectedSchema] || []);
       }
 
       // Get policies for selected schema
-      const { data: policiesData, error: policiesError } = await supabase.rpc(
-        'sportiko_pt.get_policies_info',
-        { schema_name: selectedSchema }
-      );
-
+      let policiesData = null;
+      let policiesError = null;
+      
+      try {
+        // First try the new function path
+        const result = await supabase.rpc('get_policies_info', { schema_name: selectedSchema });
+        policiesData = result.data;
+        policiesError = result.error;
+      } catch (err) {
+        console.error('Error calling get_policies_info:', err);
+        policiesError = err;
+      }
+      
       if (policiesError) {
         console.error('Error loading policies:', policiesError);
-        // Fall back to demo data
-        setPolicies(demoPolicies[selectedSchema] || []);
+        // Try alternative path
+        try {
+          const altResult = await supabase.rpc('sportiko_pt.get_policies_info', { schema_name: selectedSchema });
+          if (altResult.error) {
+            console.error('Error with alternative policies function:', altResult.error);
+            // Fall back to demo data
+            setPolicies(demoPolicies[selectedSchema] || []);
+          } else {
+            setPolicies(altResult.data || demoPolicies[selectedSchema] || []);
+          }
+        } catch (e) {
+          console.error('Exception in alternative policies function:', e);
+          // Fall back to demo data
+          setPolicies(demoPolicies[selectedSchema] || []);
+        }
       } else {
         setPolicies(policiesData || demoPolicies[selectedSchema] || []);
       }
@@ -346,10 +399,13 @@ const SettingsPage = () => {
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
           <h4 className="text-sm font-semibold text-blue-800 mb-2">Schema Structure</h4>
           <p className="text-sm text-blue-600">
-            The <strong>{selectedSchema}</strong> schema contains {tables.length} tables with Row Level Security (RLS) enabled.
-            {selectedSchema === 'sportiko_pt' && " This is the main application schema containing shared data across all trainers."}
+            The <strong>{selectedSchema}</strong> schema contains {tables.length} tables with Row
+            Level Security (RLS) enabled.
+            {selectedSchema === 'sportiko_pt' &&
+              " This is the main application schema containing shared data across all trainers."}
             {selectedSchema === 'public' && " This is the legacy schema with basic user tables."}
-            {selectedSchema.startsWith('pt_') && " This is an isolated trainer schema containing trainer-specific data."}
+            {selectedSchema.startsWith('pt_') &&
+              " This is an isolated trainer schema containing trainer-specific data."}
           </p>
         </div>
       </div>
@@ -402,7 +458,6 @@ const SettingsPage = () => {
                   const tablePolicies = policies.filter(
                     (policy) => policy.tablename === table.table_name
                   );
-
                   return (
                     <div key={table.table_name} className="border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -423,7 +478,7 @@ const SettingsPage = () => {
                                 {policy.cmd}
                               </span>
                               <span className="text-gray-600 text-xs">
-                                {policy.roles.join(', ')}
+                                {policy.roles.join(',')}
                               </span>
                             </div>
                           </div>
@@ -437,10 +492,14 @@ const SettingsPage = () => {
             <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
               <h4 className="text-sm font-semibold text-yellow-800 mb-2">Policy Information</h4>
               <p className="text-sm text-yellow-700">
-                Policies in the <strong>{selectedSchema}</strong> schema control access to data based on user roles and tenant isolation.
-                {selectedSchema === 'sportiko_pt' && " Main schema policies ensure trainers can only access their own data."}
-                {selectedSchema === 'public' && " Public schema policies provide basic role-based access to shared resources."}
-                {selectedSchema.startsWith('pt_') && " This schema uses tenant isolation to ensure trainers can only access their own player data."}
+                Policies in the <strong>{selectedSchema}</strong> schema control access to data based
+                on user roles and tenant isolation.
+                {selectedSchema === 'sportiko_pt' &&
+                  " Main schema policies ensure trainers can only access their own data."}
+                {selectedSchema === 'public' &&
+                  " Public schema policies provide basic role-based access to shared resources."}
+                {selectedSchema.startsWith('pt_') &&
+                  " This schema uses tenant isolation to ensure trainers can only access their own player data."}
               </p>
             </div>
           </div>
@@ -456,7 +515,6 @@ const SettingsPage = () => {
           <h3 className="text-lg font-semibold text-gray-900">Test Users</h3>
           <CreateUsersButton />
         </div>
-
         <p className="text-sm text-gray-600 mb-4">
           Create test users for the application. All users will have the password:{' '}
           <code className="bg-gray-100 px-2 py-1 rounded">pass123</code>
@@ -516,13 +574,18 @@ const SettingsPage = () => {
         <div className="mt-6 p-4 bg-gray-50 rounded-lg">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Database Relationships</h4>
           <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
-            <li><strong>superadmin_pt@sportiko.com</strong> - Exists in <code>auth.users</code> and <code>public.superadmins</code></li>
             <li>
-              <strong>trainer_pt@sportiko.com</strong> - Exists in <code>auth.users</code>, <code>public.trainers</code>, and <code>sportiko_pt.trainers</code>
-              with a dedicated schema <code>pt_[trainer_id]</code>
+              <strong>superadmin_pt@sportiko.com</strong> - Exists in <code>auth.users</code> and{' '}
+              <code>public.superadmins</code>
             </li>
             <li>
-              <strong>player_pt@sportiko.com</strong> - Exists in <code>auth.users</code>, <code>sportiko_pt.players_auth</code>, and <code>pt_[trainer_id].players</code>
+              <strong>trainer_pt@sportiko.com</strong> - Exists in <code>auth.users</code>,
+              <code>public.trainers</code>,and <code>sportiko_pt.trainers</code> with a dedicated
+              schema <code>pt_[trainer_id]</code>
+            </li>
+            <li>
+              <strong>player_pt@sportiko.com</strong> - Exists in <code>auth.users</code>,
+              <code>sportiko_pt.players_auth</code>,and <code>pt_[trainer_id].players</code>
             </li>
           </ul>
         </div>
@@ -539,7 +602,9 @@ const SettingsPage = () => {
         <div className="space-y-4">
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium text-gray-900 mb-2">Public Schema</h4>
-            <p className="text-sm text-gray-600">Contains legacy tables for backward compatibility:</p>
+            <p className="text-sm text-gray-600">
+              Contains legacy tables for backward compatibility:
+            </p>
             <ul className="list-disc list-inside mt-2 text-sm text-gray-600">
               <li>trainers</li>
               <li>superadmins</li>
@@ -564,7 +629,9 @@ const SettingsPage = () => {
 
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium text-gray-900 mb-2">Per-Trainer Schemas</h4>
-            <p className="text-sm text-gray-600">Isolated schemas for each trainer (pt_[trainer_id]):</p>
+            <p className="text-sm text-gray-600">
+              Isolated schemas for each trainer (pt_[trainer_id]):
+            </p>
             <ul className="list-disc list-inside mt-2 text-sm text-gray-600">
               <li>players</li>
               <li>assessments</li>

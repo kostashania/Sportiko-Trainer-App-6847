@@ -95,55 +95,77 @@ const ProfileManagement = () => {
     }
 
     setLoading(true);
+    console.debug('🚀 Starting avatar upload...', { 
+      userId: user.id,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type 
+    });
+
     try {
-      // First, create the bucket if it doesn't exist
-      const { error: bucketError } = await supabase.storage.createBucket('avatars', {
-        public: false,
-        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/gif'],
-        fileSizeLimit: 5242880 // 5MB
-      });
+      // Create proper file path
+      const fileName = `${user.id}/${Date.now()}-${file.name}`;
+      console.debug('📁 File path:', fileName);
 
-      if (bucketError && !bucketError.message.includes('already exists')) {
-        throw bucketError;
-      }
-
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
-
-      const { error: uploadError, data } = await supabase.storage
+      // Upload file
+      console.debug('⬆️ Uploading to bucket: avatars');
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, {
+        .upload(fileName, file, {
+          cacheControl: '3600',
           upsert: true
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('❌ Upload error:', uploadError);
+        throw uploadError;
+      }
 
+      console.debug('✅ Upload successful:', uploadData);
+
+      // Get public URL
       const { data: urlData } = supabase.storage
         .from('avatars')
-        .getPublicUrl(filePath);
+        .getPublicUrl(fileName);
 
-      if (!urlData?.publicUrl) throw new Error('Could not get public URL');
+      console.debug('🔗 Public URL:', urlData);
 
-      setFormData({
-        ...formData,
-        avatar_url: urlData.publicUrl
-      });
+      if (!urlData?.publicUrl) {
+        throw new Error('Could not get public URL');
+      }
 
-      // Save the avatar URL immediately
+      // Update profile with new avatar URL
       const tableName = profile?.role === 'superadmin' ? 'superadmins' : 'trainers';
+      console.debug('📝 Updating profile in table:', tableName);
+
       const { error: updateError } = await supabase
         .from(tableName)
-        .update({ avatar_url: urlData.publicUrl })
+        .update({ 
+          avatar_url: urlData.publicUrl,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', user.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('❌ Profile update error:', updateError);
+        throw updateError;
+      }
 
+      // Update local form data
+      setFormData(prev => ({
+        ...prev,
+        avatar_url: urlData.publicUrl
+      }));
+
+      console.debug('✨ Avatar upload complete!');
       toast.success('Avatar uploaded successfully!');
+      
+      // Refresh profile
       await fetchProfile(user);
+
     } catch (error) {
-      console.error('Error uploading avatar:', error);
-      toast.error('Failed to upload avatar');
+      console.error('❌ Avatar upload failed:', error);
+      toast.error(error.message || 'Failed to upload avatar');
     } finally {
       setLoading(false);
     }

@@ -10,7 +10,7 @@ export const createTenantSchema = async (trainerId) => {
     // Create schema name from trainer ID
     const schemaName = `pt_${trainerId.replace(/-/g, '_')}`;
     
-    // Try to execute SQL directly (this assumes you have the necessary permissions)
+    // Try to execute SQL directly 
     const { error } = await supabase.rpc('execute_sql', {
       sql: `
         -- Create schema
@@ -20,12 +20,11 @@ export const createTenantSchema = async (trainerId) => {
         CREATE TABLE IF NOT EXISTS ${schemaName}.players (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           name TEXT NOT NULL,
-          birthdate DATE,
-          gender TEXT,
-          contact_info TEXT,
+          birth_date DATE,
+          position TEXT,
+          contact TEXT,
           avatar_url TEXT,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
         
         -- Assessments table
@@ -55,8 +54,7 @@ export const createTenantSchema = async (trainerId) => {
           player_id UUID REFERENCES ${schemaName}.players(id) ON DELETE CASCADE,
           title TEXT NOT NULL,
           notes TEXT,
-          assigned_on DATE DEFAULT CURRENT_DATE,
-          due_on DATE,
+          due_date TIMESTAMP WITH TIME ZONE,
           completed BOOLEAN DEFAULT FALSE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
@@ -65,7 +63,6 @@ export const createTenantSchema = async (trainerId) => {
         CREATE TABLE IF NOT EXISTS ${schemaName}.homework_items (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           homework_id UUID REFERENCES ${schemaName}.homework(id) ON DELETE CASCADE,
-          exercise_id UUID REFERENCES ${schemaName}.exercises(id),
           sets INTEGER,
           reps INTEGER,
           notes TEXT,
@@ -78,7 +75,7 @@ export const createTenantSchema = async (trainerId) => {
           name TEXT NOT NULL,
           description TEXT,
           price NUMERIC(10,2) NOT NULL,
-          stock INTEGER DEFAULT 0,
+          stock_quantity INTEGER DEFAULT 0,
           image_url TEXT,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
@@ -87,7 +84,6 @@ export const createTenantSchema = async (trainerId) => {
         CREATE TABLE IF NOT EXISTS ${schemaName}.orders (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           player_id UUID REFERENCES ${schemaName}.players(id) ON DELETE CASCADE,
-          product_ids UUID[],
           total_amount NUMERIC(10,2) NOT NULL,
           paid BOOLEAN DEFAULT FALSE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -144,21 +140,40 @@ export const createTenantSchema = async (trainerId) => {
     if (error) {
       console.error('Error creating tenant schema:', error);
       
-      // Try alternative method using stored procedure if available
+      // Try a simpler approach with fewer tables
       try {
-        const { error: procError } = await supabase.rpc('create_tenant_schema', {
-          schema_name: schemaName,
-          trainer_id: trainerId
+        const { error: simpleError } = await supabase.rpc('execute_sql', {
+          sql: `
+            -- Create schema
+            CREATE SCHEMA IF NOT EXISTS ${schemaName};
+            
+            -- Players table only
+            CREATE TABLE IF NOT EXISTS ${schemaName}.players (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              name TEXT NOT NULL,
+              contact TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            -- Enable RLS
+            ALTER TABLE ${schemaName}.players ENABLE ROW LEVEL SECURITY;
+            
+            -- Create RLS policy
+            CREATE POLICY "trainer_all_access" ON ${schemaName}.players
+              FOR ALL TO authenticated
+              USING (auth.uid() = '${trainerId}')
+              WITH CHECK (auth.uid() = '${trainerId}');
+          `
         });
         
-        if (procError) {
-          console.error('Error creating schema using procedure:', procError);
+        if (simpleError) {
+          console.error('Error creating simple schema:', simpleError);
           return false;
         }
         
         return true;
-      } catch (procException) {
-        console.error('Exception in create_tenant_schema procedure:', procException);
+      } catch (simpleError) {
+        console.error('Exception creating simple schema:', simpleError);
         return false;
       }
     }

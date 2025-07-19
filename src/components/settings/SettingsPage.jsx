@@ -7,6 +7,7 @@ import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import CreateUsersButton from './CreateUsersButton';
+import DatabaseConfig from './DatabaseConfig';
 
 const { FiDatabase, FiShield, FiTable, FiUser, FiSettings, FiInfo, FiRefreshCw, FiLayers, FiKey } = FiIcons;
 
@@ -19,14 +20,14 @@ const SettingsPage = () => {
   const [policies, setPolicies] = useState([]);
   const [selectedSchema, setSelectedSchema] = useState('sportiko_pt');
   const [loading, setLoading] = useState(true);
-  
+
   // Demo data for testing when Supabase connection isn't available
   const demoSchemas = [
     { schema_name: 'sportiko_pt', table_count: 5, is_trainer_schema: false },
     { schema_name: 'pt_abc123def456', table_count: 8, is_trainer_schema: true },
     { schema_name: 'public', table_count: 6, is_trainer_schema: false }
   ];
-  
+
   const demoTables = {
     'sportiko_pt': [
       { table_name: 'trainers', row_count: 12, has_rls: true },
@@ -54,7 +55,7 @@ const SettingsPage = () => {
       { table_name: 'order_items', row_count: 32, has_rls: true }
     ]
   };
-  
+
   const demoPolicies = {
     'sportiko_pt': [
       { tablename: 'trainers', policyname: 'Trainers can view and update their own profile', cmd: 'ALL', roles: ['authenticated'] },
@@ -79,7 +80,7 @@ const SettingsPage = () => {
       { tablename: 'shop_items', policyname: 'Only superadmins can manage shop items', cmd: 'ALL', roles: ['authenticated'] }
     ]
   };
-  
+
   // List of test users that should be created
   const testUsers = [
     { email: 'superadmin_pt@sportiko.com', password: 'pass123', role: 'superadmin' },
@@ -132,7 +133,7 @@ const SettingsPage = () => {
         'sportiko_pt.get_tables_info',
         { schema_name: selectedSchema }
       );
-      
+
       if (tablesError) {
         console.error('Error loading tables:', tablesError);
         // Fall back to demo data
@@ -146,7 +147,7 @@ const SettingsPage = () => {
         'sportiko_pt.get_policies_info',
         { schema_name: selectedSchema }
       );
-      
+
       if (policiesError) {
         console.error('Error loading policies:', policiesError);
         // Fall back to demo data
@@ -205,7 +206,6 @@ const SettingsPage = () => {
             Refresh
           </button>
         </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -249,20 +249,17 @@ const SettingsPage = () => {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-600">
-                    Tables: {schema.table_count}
-                  </p>
+                  <p className="text-sm text-gray-600">Tables: {schema.table_count}</p>
                   <p className="text-sm text-gray-600 mt-1">
-                    {schema.is_trainer_schema 
+                    {schema.is_trainer_schema
                       ? 'Per-trainer isolated schema'
                       : schema.schema_name === 'sportiko_pt'
-                        ? 'Main application schema'
-                        : 'Shared schema'}
+                      ? 'Main application schema'
+                      : 'Shared schema'}
                   </p>
                 </div>
               ))}
             </div>
-            
             <div className="mt-8 p-4 bg-gray-50 rounded-lg">
               <h4 className="text-sm font-semibold text-gray-700 mb-2">Schema Design</h4>
               <ul className="list-disc list-inside space-y-2 text-sm text-gray-600">
@@ -307,7 +304,6 @@ const SettingsPage = () => {
             Refresh
           </button>
         </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -348,13 +344,9 @@ const SettingsPage = () => {
                         {table.row_count}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            table.has_rls
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          table.has_rls ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
                           {table.has_rls ? 'Enabled' : 'Disabled'}
                         </span>
                       </td>
@@ -368,7 +360,6 @@ const SettingsPage = () => {
             </table>
           </div>
         )}
-        
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
           <h4 className="text-sm font-semibold text-blue-800 mb-2">Schema Structure</h4>
           <p className="text-sm text-blue-600">
@@ -412,7 +403,6 @@ const SettingsPage = () => {
             Refresh
           </button>
         </div>
-
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -423,14 +413,11 @@ const SettingsPage = () => {
               <p className="text-center py-8 text-gray-500">No policies found in this schema</p>
             ) : (
               tables
-                .filter(table => 
-                  policies.some(policy => policy.tablename === table.table_name)
-                )
+                .filter(table => policies.some(policy => policy.tablename === table.table_name))
                 .map((table) => {
                   const tablePolicies = policies.filter(
                     (policy) => policy.tablename === table.table_name
                   );
-                  
                   return (
                     <div key={table.table_name} className="border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -439,7 +426,6 @@ const SettingsPage = () => {
                           {selectedSchema}
                         </span>
                       </div>
-                      
                       <div className="space-y-2">
                         {tablePolicies.map((policy, index) => (
                           <div
@@ -462,7 +448,6 @@ const SettingsPage = () => {
                   );
                 })
             )}
-            
             <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
               <h4 className="text-sm font-semibold text-yellow-800 mb-2">Policy Information</h4>
               <p className="text-sm text-yellow-700">
@@ -477,7 +462,7 @@ const SettingsPage = () => {
       </div>
     </div>
   );
-  
+
   const renderTestUsersTab = () => (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow p-6">
@@ -485,11 +470,10 @@ const SettingsPage = () => {
           <h3 className="text-lg font-semibold text-gray-900">Test Users</h3>
           <CreateUsersButton />
         </div>
-        
         <p className="text-sm text-gray-600 mb-4">
-          Create test users for the application. All users will have the password: <code className="bg-gray-100 px-2 py-1 rounded">pass123</code>
+          Create test users for the application. All users will have the password:{' '}
+          <code className="bg-gray-100 px-2 py-1 rounded">pass123</code>
         </p>
-        
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -518,11 +502,11 @@ const SettingsPage = () => {
                     {user.password}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                      ${user.role === 'superadmin' ? 'bg-purple-100 text-purple-800' : 
-                        user.role === 'trainer' ? 'bg-blue-100 text-blue-800' : 
-                        'bg-green-100 text-green-800'}`}
-                    >
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      user.role === 'superadmin' ? 'bg-purple-100 text-purple-800' :
+                      user.role === 'trainer' ? 'bg-blue-100 text-blue-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
                       {user.role}
                     </span>
                   </td>
@@ -536,18 +520,15 @@ const SettingsPage = () => {
             </tbody>
           </table>
         </div>
-        
         <div className="mt-6 p-4 bg-gray-50 rounded-lg">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Database Relationships</h4>
           <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
             <li><strong>superadmin_pt@sportiko.com</strong> - Exists in <code>auth.users</code> and <code>public.superadmins</code></li>
             <li>
-              <strong>trainer_pt@sportiko.com</strong> - Exists in <code>auth.users</code>, <code>public.trainers</code>, 
-              and <code>sportiko_pt.trainers</code> with a dedicated schema <code>pt_[trainer_id]</code>
+              <strong>trainer_pt@sportiko.com</strong> - Exists in <code>auth.users</code>, <code>public.trainers</code>, and <code>sportiko_pt.trainers</code> with a dedicated schema <code>pt_[trainer_id]</code>
             </li>
             <li>
-              <strong>player_pt@sportiko.com</strong> - Exists in <code>auth.users</code>, <code>sportiko_pt.players_auth</code>,
-              and <code>pt_[trainer_id].players</code>
+              <strong>player_pt@sportiko.com</strong> - Exists in <code>auth.users</code>, <code>sportiko_pt.players_auth</code>, and <code>pt_[trainer_id].players</code>
             </li>
           </ul>
         </div>
@@ -557,26 +538,7 @@ const SettingsPage = () => {
 
   const renderSystemTab = () => (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">System Information</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Supabase URL</label>
-            <p className="mt-1 text-sm text-gray-900 font-mono bg-gray-50 p-2 rounded">
-              {supabase.supabaseUrl}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Environment</label>
-            <p className="mt-1 text-sm text-gray-900">Production</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Multi-Tenant Architecture</label>
-            <p className="mt-1 text-sm text-gray-900">Enabled - Schema per trainer (pt_[trainer_id])</p>
-          </div>
-        </div>
-      </div>
-
+      <DatabaseConfig />
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Database Architecture</h3>
         <div className="space-y-4">
@@ -592,7 +554,6 @@ const SettingsPage = () => {
               <li>order_items</li>
             </ul>
           </div>
-          
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium text-gray-900 mb-2">Sportiko_PT Schema</h4>
             <p className="text-sm text-gray-600">Main application schema with shared data:</p>
@@ -604,7 +565,6 @@ const SettingsPage = () => {
               <li>ads</li>
             </ul>
           </div>
-          
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium text-gray-900 mb-2">Per-Trainer Schemas</h4>
             <p className="text-sm text-gray-600">Isolated schemas for each trainer (pt_[trainer_id]):</p>
@@ -621,7 +581,6 @@ const SettingsPage = () => {
           </div>
         </div>
       </div>
-
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Security Features</h3>
         <div className="space-y-2">

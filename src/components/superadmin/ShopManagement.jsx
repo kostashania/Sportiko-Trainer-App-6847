@@ -1,11 +1,11 @@
-import React, {useState, useEffect} from 'react';
-import {supabase} from '../../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import {motion} from 'framer-motion';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const {FiPlus, FiEdit, FiTrash2, FiPackage, FiDollarSign} = FiIcons;
+const { FiPlus, FiEdit, FiTrash2, FiPackage, FiDollarSign } = FiIcons;
 
 const ShopManagement = () => {
   const [shopItems, setShopItems] = useState([]);
@@ -18,7 +18,8 @@ const ShopManagement = () => {
     price: '',
     category: '',
     stock_quantity: '',
-    image_url: ''
+    image_url: '',
+    active: true
   });
 
   useEffect(() => {
@@ -28,11 +29,11 @@ const ShopManagement = () => {
   const loadShopItems = async () => {
     try {
       setLoading(true);
-      const {data, error} = await supabase
+      const { data, error } = await supabase
         .from('shop_items')
         .select('*')
-        .order('created_at', {ascending: false});
-      
+        .order('id', { ascending: false }); // Changed from created_at to id
+
       if (error) throw error;
       setShopItems(data || []);
     } catch (error) {
@@ -51,7 +52,8 @@ const ShopManagement = () => {
       price: '',
       category: '',
       stock_quantity: '',
-      image_url: ''
+      image_url: '',
+      active: true
     });
     setShowModal(true);
   };
@@ -61,23 +63,23 @@ const ShopManagement = () => {
     setFormData({
       name: item.name,
       description: item.description || '',
-      price: item.price.toString(),
+      price: item.price?.toString() || '',
       category: item.category || '',
-      stock_quantity: item.stock_quantity.toString(),
-      image_url: item.image_url || ''
+      stock_quantity: item.stock_quantity?.toString() || '',
+      image_url: item.image_url || '',
+      active: item.active !== false
     });
     setShowModal(true);
   };
 
   const handleDeleteItem = async (itemId) => {
     if (!confirm('Are you sure you want to delete this item?')) return;
-    
     try {
-      const {error} = await supabase
+      const { error } = await supabase
         .from('shop_items')
         .delete()
         .eq('id', itemId);
-      
+
       if (error) throw error;
       setShopItems(shopItems.filter(item => item.id !== itemId));
       toast.success('Item deleted successfully');
@@ -96,27 +98,28 @@ const ShopManagement = () => {
         price: parseFloat(formData.price),
         category: formData.category,
         stock_quantity: parseInt(formData.stock_quantity),
-        image_url: formData.image_url
+        image_url: formData.image_url,
+        active: formData.active
       };
-      
+
       if (selectedItem) {
-        const {data, error} = await supabase
+        const { data, error } = await supabase
           .from('shop_items')
           .update(itemData)
           .eq('id', selectedItem.id)
           .select()
           .single();
-        
+
         if (error) throw error;
         setShopItems(shopItems.map(item => item.id === selectedItem.id ? data : item));
         toast.success('Item updated successfully');
       } else {
-        const {data, error} = await supabase
+        const { data, error } = await supabase
           .from('shop_items')
           .insert([itemData])
           .select()
           .single();
-        
+
         if (error) throw error;
         setShopItems([data, ...shopItems]);
         toast.success('Item added successfully');
@@ -124,12 +127,16 @@ const ShopManagement = () => {
       setShowModal(false);
     } catch (error) {
       console.error('Error saving item:', error);
-      toast.error('Failed to save item');
+      toast.error(error.message || 'Failed to save item');
     }
   };
 
   const handleChange = (e) => {
-    setFormData({...formData, [e.target.name]: e.target.value});
+    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    setFormData({
+      ...formData,
+      [e.target.name]: value
+    });
   };
 
   if (loading) {
@@ -156,7 +163,7 @@ const ShopManagement = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Shop Management</h1>
-        <button 
+        <button
           onClick={handleAddItem}
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
@@ -170,9 +177,9 @@ const ShopManagement = () => {
         {shopItems.map((item) => (
           <motion.div
             key={item.id}
-            initial={{opacity: 0, y: 20}}
-            animate={{opacity: 1, y: 0}}
-            transition={{duration: 0.3}}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
             className="bg-white rounded-lg shadow hover:shadow-md transition-shadow"
           >
             <div className="aspect-w-16 aspect-h-9">
@@ -192,7 +199,7 @@ const ShopManagement = () => {
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-semibold text-gray-900">{item.name}</h3>
                 <span className="text-lg font-bold text-green-600">
-                  ${item.price}
+                  ${item.price?.toFixed(2) || '0.00'}
                 </span>
               </div>
               <p className="text-sm text-gray-600 mb-4 line-clamp-2">
@@ -200,10 +207,12 @@ const ShopManagement = () => {
               </p>
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm text-gray-500">
-                  Stock: {item.stock_quantity}
+                  Stock: {item.stock_quantity || 0}
                 </span>
-                <span className="text-sm text-gray-500 capitalize">
-                  {item.category}
+                <span className={`text-sm px-2 py-1 rounded-full ${
+                  item.active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {item.active !== false ? 'Active' : 'Inactive'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -229,9 +238,9 @@ const ShopManagement = () => {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <motion.div
-            initial={{opacity: 0, scale: 0.95}}
-            animate={{opacity: 1, scale: 1}}
-            transition={{duration: 0.3}}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
             className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
           >
             <div className="p-6">
@@ -323,6 +332,19 @@ const ShopManagement = () => {
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    name="active"
+                    id="active"
+                    checked={formData.active}
+                    onChange={handleChange}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="active" className="ml-2 block text-sm text-gray-700">
+                    Active
+                  </label>
                 </div>
                 <div className="flex justify-end space-x-3 pt-4">
                   <button

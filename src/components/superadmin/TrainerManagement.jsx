@@ -115,19 +115,21 @@ const TrainerManagement = () => {
     try {
       setProcessingAction('new');
       
-      // Step 1: Create auth user
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Since we don't have admin privileges, we'll use a different approach
+      // Step 1: Create user using regular sign-up
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: newTrainer.email,
         password: newTrainer.password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: newTrainer.full_name
+        options: {
+          data: {
+            full_name: newTrainer.full_name
+          }
         }
       });
       
-      if (authError) throw authError;
+      if (signUpError) throw signUpError;
       
-      if (!authData.user) {
+      if (!signUpData.user) {
         throw new Error('No user was created');
       }
       
@@ -138,7 +140,7 @@ const TrainerManagement = () => {
       const { data: trainerData, error: trainerError } = await supabase
         .from('trainers')
         .insert([{
-          id: authData.user.id,
+          id: signUpData.user.id,
           email: newTrainer.email,
           full_name: newTrainer.full_name,
           trial_end: newTrialEnd.toISOString(),
@@ -150,7 +152,7 @@ const TrainerManagement = () => {
       if (trainerError) throw trainerError;
       
       // Step 3: Create tenant schema
-      const success = await createTenantSchema(authData.user.id);
+      const success = await createTenantSchema(signUpData.user.id);
       
       if (!success) {
         console.warn('Schema creation may have failed, but trainer was created');
@@ -165,7 +167,7 @@ const TrainerManagement = () => {
         password: 'pass123'
       });
       
-      toast.success('Trainer added successfully!');
+      toast.success('Trainer added successfully! Email confirmation required.');
     } catch (error) {
       console.error('Error adding trainer:', error);
       toast.error(error.message || 'Failed to add trainer');

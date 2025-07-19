@@ -1,16 +1,56 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Use environment variables or fallback to hardcoded values
+// Get credentials from environment variables with fallbacks
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bjelydvroavsqczejpgd.supabase.co';
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWx5ZHZyb2F2c3FjemVqcGdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEwMjE2MDcsImV4cCI6MjA2NjU5NzYwN30.f-693IO1d0TCBQRiWcSTvjCT8I7bb0t9Op_gvD5LeIE';
 
-// Create supabase client
+// Validate required environment variables
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing required Supabase environment variables');
+}
+
+// Create the main Supabase client
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: true,
-    autoRefreshToken: true
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'sportiko-trainer@1.0.0'
+    }
   }
 });
+
+// Create admin client for service operations (only use server-side or in secure contexts)
+const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+export const supabaseAdmin = serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+}) : null;
+
+// Connection status checker
+export const checkSupabaseConnection = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('trainers')
+      .select('count')
+      .limit(1);
+    
+    if (error) {
+      console.error('Supabase connection error:', error);
+      return { connected: false, error: error.message };
+    }
+    
+    return { connected: true, error: null };
+  } catch (error) {
+    console.error('Supabase connection check failed:', error);
+    return { connected: false, error: error.message };
+  }
+};
 
 // Get tenant schema based on user ID
 export const getTenantSchema = (userId) => {
@@ -78,17 +118,17 @@ export const demoAuth = {
       trial_end: null
     }
   },
-  
+
   // Check if email is for a demo user
   isDemoUser: (email) => {
     return !!demoAuth.users[email];
   },
-  
+
   // Get demo user profile
   getDemoUser: (email) => {
     return demoAuth.users[email] || null;
   },
-  
+
   // Login with demo credentials
   signIn: (email, password) => {
     // For demo purposes, any password works for demo users
@@ -106,17 +146,19 @@ export const createTenantSchema = async (trainerId) => {
     // First check if schema exists
     const schemaName = getTenantSchema(trainerId);
     
+    // Use admin client if available, otherwise regular client
+    const client = supabaseAdmin || supabase;
+    
     // Create the schema using RPC function
-    const { error } = await supabase.rpc('create_tenant_schema', {
-      schema_name: schemaName,
+    const { error } = await client.rpc('create_tenant_schema', {
       trainer_id: trainerId
     });
-    
+
     if (error) {
       console.error('Error creating tenant schema:', error);
       
       // Fallback: Try to create schema directly with SQL
-      const { error: sqlError } = await supabase.rpc('execute_sql', {
+      const { error: sqlError } = await client.rpc('execute_sql', {
         sql: `
           CREATE SCHEMA IF NOT EXISTS ${schemaName};
           
@@ -205,12 +247,35 @@ export const createTenantSchema = async (trainerId) => {
           ALTER TABLE ${schemaName}.orders ENABLE ROW LEVEL SECURITY;
           
           -- Create RLS policies for the trainer
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.players FOR ALL TO authenticated USING (auth.uid() = '${trainerId}') WITH CHECK (auth.uid() = '${trainerId}');
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.assessments FOR ALL TO authenticated USING (auth.uid() = '${trainerId}') WITH CHECK (auth.uid() = '${trainerId}');
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.exercises FOR ALL TO authenticated USING (auth.uid() = '${trainerId}') WITH CHECK (auth.uid() = '${trainerId}');
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.homework FOR ALL TO authenticated USING (auth.uid() = '${trainerId}') WITH CHECK (auth.uid() = '${trainerId}');
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.products FOR ALL TO authenticated USING (auth.uid() = '${trainerId}') WITH CHECK (auth.uid() = '${trainerId}');
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.orders FOR ALL TO authenticated USING (auth.uid() = '${trainerId}') WITH CHECK (auth.uid() = '${trainerId}');
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.players
+            FOR ALL TO authenticated
+            USING (auth.uid() = '${trainerId}')
+            WITH CHECK (auth.uid() = '${trainerId}');
+            
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.assessments
+            FOR ALL TO authenticated
+            USING (auth.uid() = '${trainerId}')
+            WITH CHECK (auth.uid() = '${trainerId}');
+            
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.exercises
+            FOR ALL TO authenticated
+            USING (auth.uid() = '${trainerId}')
+            WITH CHECK (auth.uid() = '${trainerId}');
+            
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.homework
+            FOR ALL TO authenticated
+            USING (auth.uid() = '${trainerId}')
+            WITH CHECK (auth.uid() = '${trainerId}');
+            
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.products
+            FOR ALL TO authenticated
+            USING (auth.uid() = '${trainerId}')
+            WITH CHECK (auth.uid() = '${trainerId}');
+            
+          CREATE POLICY "trainer_all_access" ON ${schemaName}.orders
+            FOR ALL TO authenticated
+            USING (auth.uid() = '${trainerId}')
+            WITH CHECK (auth.uid() = '${trainerId}');
           
           -- Grant usage to authenticated users
           GRANT USAGE ON SCHEMA ${schemaName} TO authenticated;
@@ -230,3 +295,64 @@ export const createTenantSchema = async (trainerId) => {
     return false;
   }
 };
+
+// Database configuration storage and retrieval
+export const dbConfig = {
+  // Store configuration in localStorage for client-side access
+  store: (config) => {
+    try {
+      localStorage.setItem('sportiko_db_config', JSON.stringify({
+        ...config,
+        timestamp: Date.now()
+      }));
+      return true;
+    } catch (error) {
+      console.error('Error storing DB config:', error);
+      return false;
+    }
+  },
+
+  // Retrieve configuration from localStorage
+  retrieve: () => {
+    try {
+      const stored = localStorage.getItem('sportiko_db_config');
+      if (!stored) return null;
+      
+      const config = JSON.parse(stored);
+      
+      // Check if config is older than 24 hours
+      if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem('sportiko_db_config');
+        return null;
+      }
+      
+      return config;
+    } catch (error) {
+      console.error('Error retrieving DB config:', error);
+      return null;
+    }
+  },
+
+  // Get current configuration
+  getCurrent: () => {
+    return {
+      url: supabaseUrl,
+      anonKey: supabaseKey,
+      hasServiceRole: !!serviceRoleKey,
+      timestamp: Date.now()
+    };
+  }
+};
+
+// Initialize connection check on module load
+checkSupabaseConnection().then(result => {
+  if (result.connected) {
+    console.log('✅ Supabase connected successfully');
+    // Store current config
+    dbConfig.store(dbConfig.getCurrent());
+  } else {
+    console.error('❌ Supabase connection failed:', result.error);
+  }
+});
+
+export default supabase;

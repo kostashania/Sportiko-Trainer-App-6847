@@ -52,7 +52,7 @@ const TrainerManagement = () => {
           .from('trainers')
           .update({ is_active: !currentStatus })
           .eq('id', trainerId);
-        
+
         if (error) {
           if (error.message.includes("column") && error.message.includes("is_active")) {
             // If is_active column doesn't exist, we'll create a workaround
@@ -60,7 +60,7 @@ const TrainerManagement = () => {
             // Update without is_active field
             await supabase
               .from('trainers')
-              .update({ 
+              .update({
                 email: trainers.find(t => t.id === trainerId).email,
                 full_name: trainers.find(t => t.id === trainerId).full_name
               })
@@ -73,12 +73,14 @@ const TrainerManagement = () => {
         console.error("Update error:", updateError);
         throw updateError;
       }
-      
+
       // Update local state regardless of DB structure
       setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId ? { ...trainer, is_active: !currentStatus } : trainer
+        trainer.id === trainerId 
+          ? { ...trainer, is_active: !currentStatus }
+          : trainer
       ));
-      
+
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
       console.error('Error updating trainer status:', error);
@@ -91,21 +93,22 @@ const TrainerManagement = () => {
   const extendTrial = async (trainerId) => {
     try {
       setProcessingAction(trainerId);
-      
       const newTrialEnd = new Date();
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
-      
+
       const { error } = await supabase
         .from('trainers')
         .update({ trial_end: newTrialEnd.toISOString() })
         .eq('id', trainerId);
-        
+
       if (error) throw error;
-      
+
       setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId ? { ...trainer, trial_end: newTrialEnd.toISOString() } : trainer
+        trainer.id === trainerId 
+          ? { ...trainer, trial_end: newTrialEnd.toISOString() }
+          : trainer
       ));
-      
+
       toast.success('Trial extended by 14 days');
     } catch (error) {
       console.error('Error extending trial:', error);
@@ -119,17 +122,40 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
-      
-      const success = await createTenantSchema(trainerId);
-      
-      if (success) {
-        toast.success('Tenant schema created successfully!', { id: 'create-schema' });
+
+      // Try the basic schema creation first
+      const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
+        trainer_id: trainerId
+      });
+
+      if (error) {
+        console.error('Error with basic schema creation:', error);
+        
+        // Try the full schema creation
+        const { data: fullData, error: fullError } = await supabase.rpc('create_tenant_schema', {
+          trainer_id: trainerId
+        });
+
+        if (fullError) {
+          console.error('Error with full schema creation:', fullError);
+          throw fullError;
+        }
+
+        if (fullData) {
+          toast.success('Tenant schema created successfully!', { id: 'create-schema' });
+        } else {
+          throw new Error('Schema creation returned false');
+        }
       } else {
-        throw new Error('Failed to create schema');
+        if (data) {
+          toast.success('Basic tenant schema created successfully!', { id: 'create-schema' });
+        } else {
+          throw new Error('Basic schema creation returned false');
+        }
       }
     } catch (error) {
       console.error('Error creating tenant schema:', error);
-      toast.error('Failed to create tenant schema', { id: 'create-schema' });
+      toast.error(`Failed to create tenant schema: ${error.message}`, { id: 'create-schema' });
     } finally {
       setProcessingAction(null);
     }
@@ -138,27 +164,27 @@ const TrainerManagement = () => {
   const handleAddTrainer = async () => {
     try {
       setProcessingAction('new');
-      
+
       // Validate email format
       if (!newTrainer.email || !newTrainer.email.includes('@')) {
         throw new Error('Please enter a valid email address');
       }
-      
+
       // Validate name
       if (!newTrainer.full_name || newTrainer.full_name.trim().length < 2) {
         throw new Error('Please enter a valid name (at least 2 characters)');
       }
-      
+
       // Check if user already exists
       const { data: existingUsers } = await supabase
         .from('trainers')
         .select('id')
         .eq('email', newTrainer.email);
-        
+
       if (existingUsers && existingUsers.length > 0) {
         throw new Error('A trainer with this email already exists');
       }
-      
+
       // Step 1: Create user using regular sign-up
       let userId;
       try {
@@ -166,15 +192,18 @@ const TrainerManagement = () => {
           email: newTrainer.email,
           password: newTrainer.password,
           options: {
-            data: { full_name: newTrainer.full_name }
+            data: {
+              full_name: newTrainer.full_name
+            }
           }
         });
-        
+
         if (signUpError) throw signUpError;
+
         if (!signUpData.user) {
           throw new Error('No user was created');
         }
-        
+
         userId = signUpData.user.id;
       } catch (authError) {
         // If user already exists in auth but not in trainers table, we can still proceed
@@ -183,7 +212,7 @@ const TrainerManagement = () => {
             email: newTrainer.email,
             password: newTrainer.password
           }).catch(() => ({ data: null }));
-          
+
           if (existingUser && existingUser.user) {
             userId = existingUser.user.id;
             toast.success('Using existing auth account');
@@ -192,7 +221,7 @@ const TrainerManagement = () => {
             const { data: userByEmail } = await supabase
               .rpc('get_user_id_by_email', { email_input: newTrainer.email })
               .catch(() => ({ data: null }));
-              
+
             if (userByEmail) {
               userId = userByEmail;
             } else {
@@ -203,27 +232,27 @@ const TrainerManagement = () => {
           throw authError;
         }
       }
-      
+
       if (!userId) {
         throw new Error('Failed to create or retrieve user ID');
       }
-      
+
       // Step 2: Add to trainers table
       const newTrialEnd = new Date();
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
-      
+
       // Check if trainer fields match the schema
       const { error: schemaError } = await supabase
         .from('trainers')
         .select('id')
         .limit(1);
-        
+
       if (schemaError) {
         console.error('Schema error:', schemaError);
         toast.error('Error checking database schema');
         return;
       }
-      
+
       // Prepare trainer data based on available columns
       const trainerInsertData = {
         id: userId,
@@ -231,17 +260,16 @@ const TrainerManagement = () => {
         full_name: newTrainer.full_name,
         trial_end: newTrialEnd.toISOString()
       };
-      
+
       // Try to insert into trainers table
       const { data: insertedTrainer, error: trainerError } = await supabase
         .from('trainers')
         .insert([trainerInsertData])
         .select()
         .single();
-        
+
       if (trainerError) {
         console.error('Error creating trainer record:', trainerError);
-        
         // Fallback: try without is_active if that's the issue
         if (trainerError.message.includes('is_active')) {
           const { data: fallbackData, error: fallbackError } = await supabase
@@ -254,8 +282,9 @@ const TrainerManagement = () => {
             }])
             .select()
             .single();
-            
+
           if (fallbackError) throw fallbackError;
+
           if (fallbackData) {
             setTrainers([{ ...fallbackData, is_active: true }, ...trainers]);
           }
@@ -266,18 +295,15 @@ const TrainerManagement = () => {
         // Add to state and reset form
         setTrainers([insertedTrainer, ...trainers]);
       }
-      
+
       // Step 3: Create tenant schema
       try {
-        const success = await createTenantSchema(userId);
-        if (!success) {
-          console.warn('Schema creation may have failed, but trainer was created');
-        }
+        await createTenantSchemaForTrainer(userId);
       } catch (schemaError) {
         console.error('Error creating schema:', schemaError);
         toast.error('Trainer created but schema creation failed');
       }
-      
+
       // Reset form and close modal
       setShowModal(false);
       setNewTrainer({
@@ -285,9 +311,8 @@ const TrainerManagement = () => {
         full_name: '',
         password: 'pass123'
       });
-      
+
       toast.success('Trainer added successfully!');
-      
     } catch (error) {
       console.error('Error adding trainer:', error);
       toast.error(error.message || 'Failed to add trainer');
@@ -296,8 +321,8 @@ const TrainerManagement = () => {
     }
   };
 
-  const filteredTrainers = trainers.filter(trainer => 
-    trainer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredTrainers = trainers.filter(trainer =>
+    trainer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     trainer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -472,8 +497,7 @@ const TrainerManagement = () => {
                       }`}>
                         {trialStatus.status === 'active' 
                           ? `${trialStatus.daysLeft} days left` 
-                          : 'Expired'
-                        }
+                          : 'Expired'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -494,8 +518,8 @@ const TrainerManagement = () => {
                           onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
                           disabled={processingAction === trainer.id}
                           className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            trainer.is_active !== false 
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+                            trainer.is_active !== false
+                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
                               : 'bg-green-100 text-green-700 hover:bg-green-200'
                           } ${processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >

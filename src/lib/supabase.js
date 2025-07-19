@@ -23,14 +23,8 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   }
 });
 
-// Create admin client for service operations (only use server-side or in secure contexts)
-const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-export const supabaseAdmin = serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-}) : null;
+// Don't expose service role key in browser - remove this
+export const supabaseAdmin = null;
 
 // Connection status checker
 export const checkSupabaseConnection = async () => {
@@ -146,60 +140,46 @@ export const demoAuth = {
   }
 };
 
-// Function to create a tenant schema for a trainer
+// Function to create a tenant schema for a trainer (using database function)
 export const createTenantSchema = async (trainerId) => {
   try {
-    // First check if schema exists
-    const schemaName = getTenantSchema(trainerId);
+    console.log('Creating tenant schema for trainer:', trainerId);
     
-    // Use admin client if available, otherwise regular client
-    const client = supabaseAdmin || supabase;
-    
-    // Create the schema using RPC function
-    const { error } = await client.rpc('create_tenant_schema', {
+    // Use the database function that should be available to authenticated users
+    const { data, error } = await supabase.rpc('sportiko_pt.create_trainer_schema', {
       trainer_id: trainerId
     });
     
     if (error) {
-      console.error('Error creating tenant schema:', error);
+      console.error('Error calling create_trainer_schema:', error);
       
-      // Fallback: Try to create schema directly with SQL
-      const { error: sqlError } = await client.rpc('execute_sql', {
-        sql: `
-          CREATE SCHEMA IF NOT EXISTS ${schemaName};
-          
-          -- Players table
-          CREATE TABLE IF NOT EXISTS ${schemaName}.players (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            name TEXT NOT NULL,
-            birth_date DATE,
-            position TEXT,
-            contact TEXT,
-            avatar_url TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-          );
-          
-          -- Enable RLS on all tables
-          ALTER TABLE ${schemaName}.players ENABLE ROW LEVEL SECURITY;
-          
-          -- Create RLS policies for the trainer
-          CREATE POLICY "trainer_all_access" ON ${schemaName}.players
-            FOR ALL TO authenticated
-            USING (auth.uid()='${trainerId}')
-            WITH CHECK (auth.uid()='${trainerId}');
-          
-          -- Grant usage to authenticated users
-          GRANT USAGE ON SCHEMA ${schemaName} TO authenticated;
-          GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO authenticated;
-        `
+      // Try alternative function names
+      const { data: data2, error: error2 } = await supabase.rpc('create_trainer_schema', {
+        trainer_id: trainerId
       });
       
-      if (sqlError) {
-        console.error('Error creating tenant schema with SQL:', sqlError);
-        return false;
+      if (error2) {
+        console.error('Error with alternative function call:', error2);
+        
+        // Try the public schema function
+        const { data: data3, error: error3 } = await supabase.rpc('create_tenant_schema', {
+          trainer_id: trainerId
+        });
+        
+        if (error3) {
+          console.error('Error with public function call:', error3);
+          throw error3;
+        }
+        
+        console.log('Schema created successfully with public function');
+        return true;
       }
+      
+      console.log('Schema created successfully with alternative function');
+      return true;
     }
     
+    console.log('Schema created successfully:', data);
     return true;
   } catch (error) {
     console.error('Exception creating tenant schema:', error);
@@ -249,7 +229,7 @@ export const dbConfig = {
     return {
       url: supabaseUrl,
       anonKey: supabaseKey,
-      hasServiceRole: !!serviceRoleKey,
+      hasServiceRole: false, // Don't expose service role in browser
       timestamp: Date.now()
     };
   }

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, getTenantSchema } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiInfo } = FiIcons;
+const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase } = FiIcons;
 
 const TrainerManagement = () => {
   const [trainers, setTrainers] = useState([]);
@@ -45,38 +45,15 @@ const TrainerManagement = () => {
   const toggleTrainerStatus = async (trainerId, currentStatus) => {
     try {
       setProcessingAction(trainerId);
-      
-      // Check if is_active column exists in the trainers table
-      try {
-        const { error } = await supabase
-          .from('trainers')
-          .update({ is_active: !currentStatus })
-          .eq('id', trainerId);
+      const { error } = await supabase
+        .from('trainers')
+        .update({ is_active: !currentStatus })
+        .eq('id', trainerId);
 
-        if (error) {
-          if (error.message.includes("column") && error.message.includes("is_active")) {
-            // If is_active column doesn't exist, we'll create a workaround
-            console.warn("is_active column not found, using alternative approach");
-            // Update without is_active field
-            await supabase
-              .from('trainers')
-              .update({
-                email: trainers.find(t => t.id === trainerId).email,
-                full_name: trainers.find(t => t.id === trainerId).full_name
-              })
-              .eq('id', trainerId);
-          } else {
-            throw error;
-          }
-        }
-      } catch (updateError) {
-        console.error("Update error:", updateError);
-        throw updateError;
-      }
+      if (error) throw error;
 
-      // Update local state regardless of DB structure
-      setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId 
+      setTrainers(trainers.map(trainer =>
+        trainer.id === trainerId
           ? { ...trainer, is_active: !currentStatus }
           : trainer
       ));
@@ -93,7 +70,11 @@ const TrainerManagement = () => {
   const extendTrial = async (trainerId) => {
     try {
       setProcessingAction(trainerId);
-      const newTrialEnd = new Date();
+      const currentTrainer = trainers.find(t => t.id === trainerId);
+      const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
+      
+      // Add 14 days to current trial end date (or current date if no trial)
+      const newTrialEnd = new Date(currentTrialEnd);
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
 
       const { error } = await supabase
@@ -103,8 +84,8 @@ const TrainerManagement = () => {
 
       if (error) throw error;
 
-      setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId 
+      setTrainers(trainers.map(trainer =>
+        trainer.id === trainerId
           ? { ...trainer, trial_end: newTrialEnd.toISOString() }
           : trainer
       ));
@@ -123,48 +104,72 @@ const TrainerManagement = () => {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
 
-      // For demo purposes, we'll create a mock schema
-      // In a real app, this would call an API endpoint that uses the service role
-      const schemaName = getTenantSchema(trainerId);
+      // First try the basic schema creation
+      const { error: basicError } = await supabase.rpc('create_basic_tenant_schema', {
+        trainer_id: trainerId
+      });
 
-      // Simulate a delay for operation
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (basicError) {
+        console.error('Error with basic schema creation:', basicError);
+        
+        // Try the full schema creation as fallback
+        const { error: fullError } = await supabase.rpc('create_tenant_schema', {
+          trainer_id: trainerId
+        });
 
-      // Create players table (simulation)
-      const { data, error } = await supabase
-        .from('trainers')
-        .select('*')
-        .eq('id', trainerId)
-        .single();
-
-      if (error) {
-        throw error;
+        if (fullError) {
+          console.error('Error with full schema creation:', fullError);
+          throw fullError;
+        }
       }
 
-      // Add a simulated players entry to demonstrate schema was created
-      toast.success(`Schema ${schemaName} created successfully!`, { id: 'create-schema' });
-      
-      // In demo mode, we'll update the trainer record to indicate schema was created
-      try {
-        await supabase
-          .from('trainers')
-          .update({ 
-            // This is just a demo field to simulate schema creation status
-            full_name: `${data.full_name} (schema created)` 
-          })
-          .eq('id', trainerId);
-          
-        // Update local state
-        setTrainers(trainers.map(t => 
-          t.id === trainerId ? { ...t, full_name: `${t.full_name} (schema created)` } : t
-        ));
-      } catch (updateError) {
-        console.warn("Could not update trainer record:", updateError);
-      }
-      
+      toast.success('Tenant schema created successfully!', { id: 'create-schema' });
     } catch (error) {
       console.error('Error creating tenant schema:', error);
-      toast.error(`Failed to create tenant schema: ${error.message}`, { id: 'create-schema' });
+      
+      // Try manual schema creation as last resort
+      try {
+        const schemaName = `pt_${trainerId.replace(/-/g, '_')}`;
+        const { error: manualError } = await supabase.rpc('execute_sql', {
+          sql: `
+            -- Create schema
+            CREATE SCHEMA IF NOT EXISTS ${schemaName};
+            
+            -- Create players table
+            CREATE TABLE IF NOT EXISTS ${schemaName}.players (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              name TEXT NOT NULL,
+              birth_date DATE,
+              position TEXT,
+              contact TEXT,
+              avatar_url TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            -- Enable RLS
+            ALTER TABLE ${schemaName}.players ENABLE ROW LEVEL SECURITY;
+            
+            -- Create policy
+            CREATE POLICY "trainer_all_access" ON ${schemaName}.players
+              FOR ALL TO authenticated
+              USING (auth.uid() = '${trainerId}')
+              WITH CHECK (auth.uid() = '${trainerId}');
+              
+            -- Grant permissions
+            GRANT USAGE ON SCHEMA ${schemaName} TO authenticated;
+            GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO authenticated;
+          `
+        });
+
+        if (manualError) {
+          throw manualError;
+        }
+
+        toast.success('Schema created manually!', { id: 'create-schema' });
+      } catch (manualError) {
+        console.error('Manual schema creation failed:', manualError);
+        toast.error('Failed to create tenant schema', { id: 'create-schema' });
+      }
     } finally {
       setProcessingAction(null);
     }
@@ -174,150 +179,114 @@ const TrainerManagement = () => {
     try {
       setProcessingAction('new');
 
-      // Validate email format
-      if (!newTrainer.email || !newTrainer.email.includes('@')) {
-        throw new Error('Please enter a valid email address');
+      // Validate input
+      if (!newTrainer.email || !newTrainer.full_name) {
+        toast.error('Please fill in all required fields');
+        return;
       }
 
-      // Validate name
-      if (!newTrainer.full_name || newTrainer.full_name.trim().length < 2) {
-        throw new Error('Please enter a valid name (at least 2 characters)');
-      }
-
-      // Check if user already exists
-      const { data: existingUsers } = await supabase
+      // Check if trainer already exists
+      const { data: existingTrainer } = await supabase
         .from('trainers')
         .select('id')
-        .eq('email', newTrainer.email);
+        .eq('email', newTrainer.email)
+        .single();
 
-      if (existingUsers && existingUsers.length > 0) {
-        throw new Error('A trainer with this email already exists');
+      if (existingTrainer) {
+        toast.error('A trainer with this email already exists');
+        return;
       }
 
-      // Step 1: Create user using regular sign-up
-      let userId;
-      try {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: newTrainer.email,
-          password: newTrainer.password,
-          options: {
-            data: {
-              full_name: newTrainer.full_name
-            }
+      // Step 1: Create user using auth signup
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: newTrainer.email,
+        password: newTrainer.password,
+        options: {
+          data: {
+            full_name: newTrainer.full_name
           }
-        });
-
-        if (signUpError) throw signUpError;
-
-        if (!signUpData.user) {
-          throw new Error('No user was created');
         }
+      });
 
-        userId = signUpData.user.id;
-      } catch (authError) {
-        // If user already exists in auth but not in trainers table, we can still proceed
-        if (authError.message === 'User already registered') {
-          const { data: existingUser } = await supabase.auth.signInWithPassword({
-            email: newTrainer.email,
-            password: newTrainer.password
-          }).catch(() => ({ data: null }));
+      if (signUpError) {
+        // If signup fails due to existing user, try to get the user
+        if (signUpError.message.includes('already been registered')) {
+          const { data: existingUser } = await supabase
+            .from('auth.users')
+            .select('id')
+            .eq('email', newTrainer.email)
+            .single();
 
-          if (existingUser && existingUser.user) {
-            userId = existingUser.user.id;
-            toast.success('Using existing auth account');
-          } else {
-            // Try to get user ID by email
-            const { data: userByEmail } = await supabase
-              .rpc('get_user_id_by_email', { email_input: newTrainer.email })
-              .catch(() => ({ data: null }));
-
-            if (userByEmail) {
-              userId = userByEmail;
-            } else {
-              throw new Error('User already exists but could not be retrieved');
-            }
+          if (!existingUser) {
+            throw signUpError;
           }
+          
+          // Use existing user ID
+          signUpData.user = { id: existingUser.id };
         } else {
-          throw authError;
+          throw signUpError;
         }
       }
 
+      const userId = signUpData.user?.id;
       if (!userId) {
-        throw new Error('Failed to create or retrieve user ID');
+        throw new Error('No user ID received from signup');
       }
 
       // Step 2: Add to trainers table
       const newTrialEnd = new Date();
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
 
-      // Check if trainer fields match the schema
-      const { error: schemaError } = await supabase
+      const { data: trainerData, error: trainerError } = await supabase
         .from('trainers')
-        .select('id')
-        .limit(1);
-
-      if (schemaError) {
-        console.error('Schema error:', schemaError);
-        toast.error('Error checking database schema');
-        return;
-      }
-
-      // Prepare trainer data based on available columns
-      const trainerInsertData = {
-        id: userId,
-        email: newTrainer.email,
-        full_name: newTrainer.full_name,
-        trial_end: newTrialEnd.toISOString()
-      };
-
-      // Try to insert into trainers table
-      const { data: insertedTrainer, error: trainerError } = await supabase
-        .from('trainers')
-        .insert([trainerInsertData])
+        .insert([{
+          id: userId,
+          email: newTrainer.email,
+          full_name: newTrainer.full_name,
+          trial_end: newTrialEnd.toISOString(),
+          is_active: true
+        }])
         .select()
         .single();
 
       if (trainerError) {
         console.error('Error creating trainer record:', trainerError);
-        // Fallback: try without is_active if that's the issue
-        if (trainerError.message.includes('is_active')) {
-          const { data: fallbackData, error: fallbackError } = await supabase
+        
+        // If it's a duplicate key error, the trainer might already exist
+        if (trainerError.code === '23505') {
+          // Try to fetch the existing trainer
+          const { data: existingTrainerData } = await supabase
             .from('trainers')
-            .insert([{
-              id: userId,
-              email: newTrainer.email,
-              full_name: newTrainer.full_name,
-              trial_end: newTrialEnd.toISOString()
-            }])
-            .select()
+            .select('*')
+            .eq('id', userId)
             .single();
 
-          if (fallbackError) throw fallbackError;
-
-          if (fallbackData) {
-            setTrainers([{ ...fallbackData, is_active: true }, ...trainers]);
+          if (existingTrainerData) {
+            setTrainers([existingTrainerData, ...trainers.filter(t => t.id !== userId)]);
+            toast.success('Trainer already exists and has been refreshed');
+            setShowModal(false);
+            setNewTrainer({ email: '', full_name: '', password: 'pass123' });
+            return;
           }
-        } else {
-          throw trainerError;
         }
-      } else if (insertedTrainer) {
-        // Add to state and reset form
-        setTrainers([insertedTrainer, ...trainers]);
+        
+        throw trainerError;
       }
 
-      // Step 3: Simulate schema creation for demo
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success('Tenant schema created for demo purposes');
+      // Step 3: Create tenant schema
+      await createTenantSchemaForTrainer(userId);
 
-      // Reset form and close modal
+      // Add to state and reset form
+      setTrainers([trainerData, ...trainers]);
       setShowModal(false);
-      setNewTrainer({
-        email: '',
-        full_name: '',
-        password: 'pass123'
-      });
-
+      setNewTrainer({ email: '', full_name: '', password: 'pass123' });
       toast.success('Trainer added successfully!');
+
+      // Reload trainers to get fresh data
+      setTimeout(() => {
+        loadTrainers();
+      }, 1000);
+
     } catch (error) {
       console.error('Error adding trainer:', error);
       toast.error(error.message || 'Failed to add trainer');
@@ -333,11 +302,11 @@ const TrainerManagement = () => {
 
   const getTrialStatus = (trialEnd) => {
     if (!trialEnd) return { status: 'expired', daysLeft: 0 };
-    
+
     const endDate = new Date(trialEnd);
     const today = new Date();
     const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-    
+
     if (daysLeft > 0) {
       return { status: 'active', daysLeft };
     } else {
@@ -495,13 +464,15 @@ const TrainerManagement = () => {
                       <div className="text-sm text-gray-900">{trainer.email}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        trialStatus.status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {trialStatus.status === 'active' 
-                          ? `${trialStatus.daysLeft} days left` 
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          trialStatus.status === 'active'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {trialStatus.status === 'active'
+                          ? `${trialStatus.daysLeft} days left`
                           : 'Expired'}
                       </span>
                     </td>
@@ -509,11 +480,13 @@ const TrainerManagement = () => {
                       {trainer.created_at && format(new Date(trainer.created_at), 'MMM dd, yyyy')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        trainer.is_active !== false 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          trainer.is_active !== false
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
                         {trainer.is_active !== false ? 'Active' : 'Inactive'}
                       </span>
                     </td>
@@ -625,34 +598,6 @@ const TrainerManagement = () => {
           </div>
         </div>
       )}
-
-      {/* Information Alert */}
-      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
-        <div className="flex">
-          <div className="flex-shrink-0">
-            <SafeIcon icon={FiInfo} className="h-5 w-5 text-blue-500" />
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">Demo Mode Information</h3>
-            <div className="mt-2 text-sm text-blue-700">
-              <p>
-                In this demo environment, tenant schema creation is simulated. In a production environment, 
-                this operation would:
-              </p>
-              <ul className="list-disc list-inside mt-1 space-y-1">
-                <li>Create a dedicated database schema for each trainer</li>
-                <li>Set up all required tables with proper relationships</li>
-                <li>Configure Row Level Security (RLS) policies</li>
-                <li>Grant appropriate permissions to the trainer</li>
-              </ul>
-              <p className="mt-2">
-                This operation typically requires database admin privileges and would be performed through 
-                a secure backend API rather than directly from the browser.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

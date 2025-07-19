@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast';
 const { FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp } = FiIcons;
 
 const SuperadminDashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalTrainers: 0,
     totalPlayers: 0,
@@ -24,20 +26,22 @@ const SuperadminDashboard = () => {
   const loadSuperadminStats = async () => {
     try {
       setLoading(true);
-      
+
       // Get total trainers
       const { data: trainers } = await supabase
         .from('trainers')
         .select('id');
-      
+
       // Get total orders
       const { data: orders } = await supabase
         .from('orders')
         .select('total_amount, status');
-      
+
       // Calculate stats
       const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
-      const activeOrders = orders?.filter(order => order.status === 'pending' || order.status === 'processing').length || 0;
+      const activeOrders = orders?.filter(order => 
+        order.status === 'pending' || order.status === 'processing'
+      ).length || 0;
 
       setStats({
         totalTrainers: trainers?.length || 0,
@@ -51,6 +55,19 @@ const SuperadminDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleManageTrainers = () => {
+    navigate('/superadmin/trainers');
+  };
+
+  const handleManageShop = () => {
+    navigate('/superadmin/shop');
+  };
+
+  const handleViewAnalytics = () => {
+    // For now, just show a coming soon message
+    toast.success('Analytics feature coming soon!');
   };
 
   return (
@@ -100,19 +117,28 @@ const SuperadminDashboard = () => {
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="space-y-3">
-            <button className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+            <button 
+              onClick={handleManageTrainers}
+              className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+            >
               <div className="flex items-center">
                 <SafeIcon icon={FiUsers} className="w-5 h-5 text-blue-600 mr-3" />
                 <span className="text-blue-700">Manage Trainers</span>
               </div>
             </button>
-            <button className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+            <button 
+              onClick={handleManageShop}
+              className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+            >
               <div className="flex items-center">
                 <SafeIcon icon={FiShoppingBag} className="w-5 h-5 text-green-600 mr-3" />
                 <span className="text-green-700">Manage Shop Items</span>
               </div>
             </button>
-            <button className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+            <button 
+              onClick={handleViewAnalytics}
+              className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+            >
               <div className="flex items-center">
                 <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-purple-600 mr-3" />
                 <span className="text-purple-700">View Analytics</span>

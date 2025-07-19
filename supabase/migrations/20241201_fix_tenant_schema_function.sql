@@ -1,250 +1,32 @@
--- Fix tenant schema creation function to work with RLS
--- This function should be callable by authenticated users (superadmins)
+-- Fix tenant schema creation and superadmin permissions
 
--- Drop existing function if it exists
-DROP FUNCTION IF EXISTS public.create_tenant_schema(UUID);
-DROP FUNCTION IF EXISTS public.create_tenant_schema(TEXT, UUID);
-DROP FUNCTION IF EXISTS sportiko_pt.create_trainer_schema(UUID);
-
--- Create a function that can be called by superadmins
-CREATE OR REPLACE FUNCTION public.create_tenant_schema(trainer_id UUID)
-RETURNS BOOLEAN
-SECURITY DEFINER
-SET search_path = public
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  schema_name TEXT := 'pt_' || replace(trainer_id::text, '-', '_');
-  result BOOLEAN := FALSE;
+-- First, ensure we have the is_superadmin function that works with JWT
+CREATE OR REPLACE FUNCTION public.is_superadmin(user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN AS $$
 BEGIN
-  -- Check if the current user is a superadmin
-  IF NOT EXISTS (
+  -- Check if user exists in superadmins table
+  RETURN EXISTS (
     SELECT 1 FROM public.superadmins 
-    WHERE id = auth.uid()
-  ) THEN
-    RAISE EXCEPTION 'Only superadmins can create tenant schemas';
-  END IF;
-
-  BEGIN
-    -- Create schema
-    EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', schema_name);
-    
-    -- Create players table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.players (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name TEXT NOT NULL,
-        birth_date DATE,
-        position TEXT,
-        contact TEXT,
-        avatar_url TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name);
-
-    -- Create assessments table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.assessments (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        player_id UUID REFERENCES %I.players(id) ON DELETE CASCADE,
-        assessment_date DATE NOT NULL,
-        metrics JSONB,
-        notes TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name, schema_name);
-
-    -- Create exercises table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.exercises (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name TEXT NOT NULL,
-        description TEXT,
-        category TEXT,
-        difficulty TEXT,
-        video_url TEXT,
-        image_url TEXT,
-        instructions JSONB,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name);
-
-    -- Create homework table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.homework (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        player_id UUID REFERENCES %I.players(id) ON DELETE CASCADE,
-        title TEXT NOT NULL,
-        description TEXT,
-        due_date TIMESTAMP WITH TIME ZONE,
-        completed BOOLEAN DEFAULT false,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name, schema_name);
-
-    -- Create homework_items table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.homework_items (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        homework_id UUID REFERENCES %I.homework(id) ON DELETE CASCADE,
-        exercise_id UUID REFERENCES %I.exercises(id),
-        sets INTEGER,
-        reps INTEGER,
-        duration INTERVAL,
-        notes TEXT,
-        completed BOOLEAN DEFAULT false,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name, schema_name, schema_name);
-
-    -- Create products table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.products (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name TEXT NOT NULL,
-        description TEXT,
-        price NUMERIC(10,2) NOT NULL,
-        stock_quantity INTEGER DEFAULT 0,
-        category TEXT,
-        image_url TEXT,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name);
-
-    -- Create orders table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.orders (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        player_id UUID REFERENCES %I.players(id) ON DELETE CASCADE,
-        status TEXT DEFAULT ''pending'',
-        total_amount NUMERIC(10,2) NOT NULL,
-        payment_method TEXT,
-        payment_status TEXT DEFAULT ''unpaid'',
-        notes TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name, schema_name);
-
-    -- Create order_items table
-    EXECUTE format('
-      CREATE TABLE IF NOT EXISTS %I.order_items (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        order_id UUID REFERENCES %I.orders(id) ON DELETE CASCADE,
-        product_id UUID REFERENCES %I.products(id),
-        quantity INTEGER NOT NULL,
-        price NUMERIC(10,2) NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )', schema_name, schema_name, schema_name);
-
-    -- Enable RLS for all tables
-    EXECUTE format('ALTER TABLE %I.players ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.assessments ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.exercises ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.homework ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.homework_items ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.products ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.orders ENABLE ROW LEVEL SECURITY', schema_name);
-    EXECUTE format('ALTER TABLE %I.order_items ENABLE ROW LEVEL SECURITY', schema_name);
-
-    -- Create RLS policies for trainer access
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.players
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.assessments
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.exercises
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.homework
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.homework_items
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.products
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.orders
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    EXECUTE format('
-      CREATE POLICY "trainer_all_access" ON %I.order_items
-        FOR ALL TO authenticated
-        USING (auth.uid() = %L)
-        WITH CHECK (auth.uid() = %L)
-    ', schema_name, trainer_id, trainer_id);
-
-    -- Grant usage on schema to authenticated users
-    EXECUTE format('GRANT USAGE ON SCHEMA %I TO authenticated', schema_name);
-    EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA %I TO authenticated', schema_name);
-    EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA %I TO authenticated', schema_name);
-
-    result := TRUE;
-    
-  EXCEPTION WHEN OTHERS THEN
-    -- Log the error and return false
-    RAISE WARNING 'Error creating tenant schema: %', SQLERRM;
-    result := FALSE;
-  END;
-
-  RETURN result;
+    WHERE id = COALESCE(user_id, auth.uid())
+  );
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION public.create_tenant_schema(UUID) TO authenticated;
-
--- Create a simpler version that just creates the basic structure
+-- Create a simplified tenant schema creation function
 CREATE OR REPLACE FUNCTION public.create_basic_tenant_schema(trainer_id UUID)
-RETURNS BOOLEAN
-SECURITY DEFINER
-SET search_path = public
-LANGUAGE plpgsql
-AS $$
+RETURNS VOID AS $$
 DECLARE
   schema_name TEXT := 'pt_' || replace(trainer_id::text, '-', '_');
 BEGIN
-  -- Check if the current user is a superadmin
-  IF NOT EXISTS (
-    SELECT 1 FROM public.superadmins 
-    WHERE id = auth.uid()
-  ) THEN
+  -- Only allow superadmins to create schemas
+  IF NOT public.is_superadmin() THEN
     RAISE EXCEPTION 'Only superadmins can create tenant schemas';
   END IF;
 
   -- Create schema
   EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', schema_name);
   
-  -- Create basic players table
+  -- Create players table
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I.players (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -253,27 +35,187 @@ BEGIN
       position TEXT,
       contact TEXT,
       avatar_url TEXT,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )', schema_name);
+
+  -- Create homework table
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I.homework (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      player_id UUID REFERENCES %I.players(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_date TIMESTAMP WITH TIME ZONE,
+      completed BOOLEAN DEFAULT false,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )', schema_name, schema_name);
+
+  -- Create payments table
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I.payments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      player_id UUID REFERENCES %I.players(id) ON DELETE CASCADE,
+      amount NUMERIC(10,2) NOT NULL,
+      due_date DATE,
+      paid BOOLEAN DEFAULT false,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )', schema_name, schema_name);
 
   -- Enable RLS
   EXECUTE format('ALTER TABLE %I.players ENABLE ROW LEVEL SECURITY', schema_name);
+  EXECUTE format('ALTER TABLE %I.homework ENABLE ROW LEVEL SECURITY', schema_name);
+  EXECUTE format('ALTER TABLE %I.payments ENABLE ROW LEVEL SECURITY', schema_name);
 
-  -- Create basic policy
+  -- Create policies for trainer access
   EXECUTE format('
     CREATE POLICY "trainer_all_access" ON %I.players
-      FOR ALL TO authenticated
-      USING (auth.uid() = %L)
-      WITH CHECK (auth.uid() = %L)
+    FOR ALL TO authenticated
+    USING (auth.uid() = %L)
+    WITH CHECK (auth.uid() = %L)
+  ', schema_name, trainer_id, trainer_id);
+
+  EXECUTE format('
+    CREATE POLICY "trainer_all_access" ON %I.homework
+    FOR ALL TO authenticated
+    USING (auth.uid() = %L)
+    WITH CHECK (auth.uid() = %L)
+  ', schema_name, trainer_id, trainer_id);
+
+  EXECUTE format('
+    CREATE POLICY "trainer_all_access" ON %I.payments
+    FOR ALL TO authenticated
+    USING (auth.uid() = %L)
+    WITH CHECK (auth.uid() = %L)
   ', schema_name, trainer_id, trainer_id);
 
   -- Grant permissions
   EXECUTE format('GRANT USAGE ON SCHEMA %I TO authenticated', schema_name);
   EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA %I TO authenticated', schema_name);
+  EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA %I TO authenticated', schema_name);
 
-  RETURN TRUE;
+  -- Insert sample data
+  EXECUTE format('
+    INSERT INTO %I.players (name, position, contact, birth_date) VALUES
+    (''John Doe'', ''Forward'', ''john@example.com'', ''2000-01-01''),
+    (''Sarah Smith'', ''Midfielder'', ''sarah@example.com'', ''2001-03-15''),
+    (''Mike Johnson'', ''Defender'', ''mike@example.com'', ''1999-11-10'')
+    ON CONFLICT DO NOTHING
+  ', schema_name);
+
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Grant execute permission
+-- Update the existing create_tenant_schema function
+CREATE OR REPLACE FUNCTION public.create_tenant_schema(trainer_id UUID)
+RETURNS VOID AS $$
+DECLARE
+  schema_name TEXT := 'pt_' || replace(trainer_id::text, '-', '_');
+BEGIN
+  -- Only allow superadmins to create schemas
+  IF NOT public.is_superadmin() THEN
+    RAISE EXCEPTION 'Only superadmins can create tenant schemas';
+  END IF;
+
+  -- Call the basic schema creation first
+  PERFORM public.create_basic_tenant_schema(trainer_id);
+
+  -- Add additional tables for full schema
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I.assessments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      player_id UUID REFERENCES %I.players(id) ON DELETE CASCADE,
+      assessment_date DATE NOT NULL,
+      metrics JSONB,
+      notes TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )', schema_name, schema_name);
+
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I.exercises (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT,
+      category TEXT,
+      difficulty TEXT,
+      video_url TEXT,
+      image_url TEXT,
+      instructions JSONB,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    )', schema_name);
+
+  -- Enable RLS on new tables
+  EXECUTE format('ALTER TABLE %I.assessments ENABLE ROW LEVEL SECURITY', schema_name);
+  EXECUTE format('ALTER TABLE %I.exercises ENABLE ROW LEVEL SECURITY', schema_name);
+
+  -- Create policies for new tables
+  EXECUTE format('
+    CREATE POLICY "trainer_all_access" ON %I.assessments
+    FOR ALL TO authenticated
+    USING (auth.uid() = %L)
+    WITH CHECK (auth.uid() = %L)
+  ', schema_name, trainer_id, trainer_id);
+
+  EXECUTE format('
+    CREATE POLICY "trainer_all_access" ON %I.exercises
+    FOR ALL TO authenticated
+    USING (auth.uid() = %L)
+    WITH CHECK (auth.uid() = %L)
+  ', schema_name, trainer_id, trainer_id);
+
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to execute arbitrary SQL (for superadmins only)
+CREATE OR REPLACE FUNCTION public.execute_sql(sql TEXT)
+RETURNS VOID AS $$
+BEGIN
+  -- Only allow superadmins to execute arbitrary SQL
+  IF NOT public.is_superadmin() THEN
+    RAISE EXCEPTION 'Only superadmins can execute SQL';
+  END IF;
+  
+  EXECUTE sql;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Ensure proper permissions are set on all functions
 GRANT EXECUTE ON FUNCTION public.create_basic_tenant_schema(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_tenant_schema(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.execute_sql(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_superadmin(UUID) TO authenticated;
+
+-- Update trainer table structure to include additional fields
+ALTER TABLE public.trainers 
+ADD COLUMN IF NOT EXISTS bio TEXT,
+ADD COLUMN IF NOT EXISTS phone TEXT,
+ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+-- Update superadmin table structure
+ALTER TABLE public.superadmins 
+ADD COLUMN IF NOT EXISTS bio TEXT,
+ADD COLUMN IF NOT EXISTS phone TEXT,
+ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+
+-- Create trigger to update updated_at timestamp
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add triggers for updated_at
+DROP TRIGGER IF EXISTS update_trainers_updated_at ON public.trainers;
+CREATE TRIGGER update_trainers_updated_at
+  BEFORE UPDATE ON public.trainers
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_superadmins_updated_at ON public.superadmins;
+CREATE TRIGGER update_superadmins_updated_at
+  BEFORE UPDATE ON public.superadmins
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();

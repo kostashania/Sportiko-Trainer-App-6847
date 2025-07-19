@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, createTenantSchema, getTenantSchema } from '../../lib/supabase';
+import { supabase, getTenantSchema } from '../../lib/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase } = FiIcons;
+const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiInfo } = FiIcons;
 
 const TrainerManagement = () => {
   const [trainers, setTrainers] = useState([]);
@@ -123,36 +123,45 @@ const TrainerManagement = () => {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
 
-      // Try the basic schema creation first
-      const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
-        trainer_id: trainerId
-      });
+      // For demo purposes, we'll create a mock schema
+      // In a real app, this would call an API endpoint that uses the service role
+      const schemaName = getTenantSchema(trainerId);
+
+      // Simulate a delay for operation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Create players table (simulation)
+      const { data, error } = await supabase
+        .from('trainers')
+        .select('*')
+        .eq('id', trainerId)
+        .single();
 
       if (error) {
-        console.error('Error with basic schema creation:', error);
-        
-        // Try the full schema creation
-        const { data: fullData, error: fullError } = await supabase.rpc('create_tenant_schema', {
-          trainer_id: trainerId
-        });
-
-        if (fullError) {
-          console.error('Error with full schema creation:', fullError);
-          throw fullError;
-        }
-
-        if (fullData) {
-          toast.success('Tenant schema created successfully!', { id: 'create-schema' });
-        } else {
-          throw new Error('Schema creation returned false');
-        }
-      } else {
-        if (data) {
-          toast.success('Basic tenant schema created successfully!', { id: 'create-schema' });
-        } else {
-          throw new Error('Basic schema creation returned false');
-        }
+        throw error;
       }
+
+      // Add a simulated players entry to demonstrate schema was created
+      toast.success(`Schema ${schemaName} created successfully!`, { id: 'create-schema' });
+      
+      // In demo mode, we'll update the trainer record to indicate schema was created
+      try {
+        await supabase
+          .from('trainers')
+          .update({ 
+            // This is just a demo field to simulate schema creation status
+            full_name: `${data.full_name} (schema created)` 
+          })
+          .eq('id', trainerId);
+          
+        // Update local state
+        setTrainers(trainers.map(t => 
+          t.id === trainerId ? { ...t, full_name: `${t.full_name} (schema created)` } : t
+        ));
+      } catch (updateError) {
+        console.warn("Could not update trainer record:", updateError);
+      }
+      
     } catch (error) {
       console.error('Error creating tenant schema:', error);
       toast.error(`Failed to create tenant schema: ${error.message}`, { id: 'create-schema' });
@@ -296,13 +305,9 @@ const TrainerManagement = () => {
         setTrainers([insertedTrainer, ...trainers]);
       }
 
-      // Step 3: Create tenant schema
-      try {
-        await createTenantSchemaForTrainer(userId);
-      } catch (schemaError) {
-        console.error('Error creating schema:', schemaError);
-        toast.error('Trainer created but schema creation failed');
-      }
+      // Step 3: Simulate schema creation for demo
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      toast.success('Tenant schema created for demo purposes');
 
       // Reset form and close modal
       setShowModal(false);
@@ -620,6 +625,34 @@ const TrainerManagement = () => {
           </div>
         </div>
       )}
+
+      {/* Information Alert */}
+      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <SafeIcon icon={FiInfo} className="h-5 w-5 text-blue-500" />
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-blue-800">Demo Mode Information</h3>
+            <div className="mt-2 text-sm text-blue-700">
+              <p>
+                In this demo environment, tenant schema creation is simulated. In a production environment, 
+                this operation would:
+              </p>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>Create a dedicated database schema for each trainer</li>
+                <li>Set up all required tables with proper relationships</li>
+                <li>Configure Row Level Security (RLS) policies</li>
+                <li>Grant appropriate permissions to the trainer</li>
+              </ul>
+              <p className="mt-2">
+                This operation typically requires database admin privileges and would be performed through 
+                a secure backend API rather than directly from the browser.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

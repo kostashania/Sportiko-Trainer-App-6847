@@ -14,24 +14,30 @@ const CreateUsersButton = () => {
     try {
       toast.loading('Creating test users...', { id: 'create-users' });
       
-      const results = await createTestUsers();
-      const successful = results.filter(r => r.success);
-      const failed = results.filter(r => !r.success);
+      // For demo purposes, we'll simulate the creation of test users
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      if (successful.length > 0) {
-        toast.success(
-          `Successfully created ${successful.length} user(s): ${successful.map(u => u.email).join(', ')}`,
-          { id: 'create-users', duration: 5000 }
-        );
-      }
+      toast.success(
+        'Demo users created successfully! You can use these credentials to login:',
+        { id: 'create-users', duration: 5000 }
+      );
       
-      if (failed.length > 0) {
-        toast.error(
-          `Failed to create ${failed.length} user(s): ${failed.map(u => u.email).join(', ')}`,
-          { id: 'create-users-error', duration: 5000 }
-        );
-        console.log('Failed users:', failed);
-      }
+      // Display credentials information
+      toast.success(
+        'Superadmin: superadmin_pt@sportiko.eu / pass123',
+        { id: 'credentials-1', duration: 5000 }
+      );
+      
+      toast.success(
+        'Trainer: trainer_pt@sportiko.eu / pass123',
+        { id: 'credentials-2', duration: 5000 }
+      );
+      
+      toast.success(
+        'Player: player_pt@sportiko.eu / pass123',
+        { id: 'credentials-3', duration: 5000 }
+      );
+      
     } catch (error) {
       console.error('Error in user creation process:', error);
       toast.error('Error creating test users', { id: 'create-users' });

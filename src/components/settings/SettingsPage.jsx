@@ -19,74 +19,67 @@ const SettingsPage = () => {
   const [schemas, setSchemas] = useState([]);
   const [tables, setTables] = useState([]);
   const [policies, setPolicies] = useState([]);
-  const [selectedSchema, setSelectedSchema] = useState('sportiko_pt');
+  const [selectedSchema, setSelectedSchema] = useState('public');
   const [loading, setLoading] = useState(true);
 
   // Demo data for testing when Supabase connection isn't available
   const demoSchemas = [
+    { schema_name: 'public', table_count: 6, is_trainer_schema: false },
     { schema_name: 'sportiko_pt', table_count: 5, is_trainer_schema: false },
-    { schema_name: 'pt_abc123def456', table_count: 8, is_trainer_schema: true },
-    { schema_name: 'public', table_count: 6, is_trainer_schema: false }
+    { schema_name: 'pt_d45616a4_d90b_4358_b62c_9005f61e3d84', table_count: 8, is_trainer_schema: true }
   ];
 
   const demoTables = {
-    'sportiko_pt': [
-      { table_name: 'trainers', row_count: 12, has_rls: true },
-      { table_name: 'players_auth', row_count: 45, has_rls: true },
-      { table_name: 'subscription_plans', row_count: 3, has_rls: true },
-      { table_name: 'settings', row_count: 8, has_rls: true },
-      { table_name: 'ads', row_count: 6, has_rls: true }
-    ],
-    'pt_abc123def456': [
-      { table_name: 'players', row_count: 15, has_rls: true },
-      { table_name: 'assessments', row_count: 28, has_rls: true },
-      { table_name: 'exercises', row_count: 42, has_rls: true },
-      { table_name: 'homework', row_count: 18, has_rls: true },
-      { table_name: 'homework_items', row_count: 67, has_rls: true },
-      { table_name: 'products', row_count: 12, has_rls: true },
+    'public': [
+      { table_name: 'trainers', row_count: 3, has_rls: true },
+      { table_name: 'superadmins', row_count: 1, has_rls: true },
+      { table_name: 'shop_items', row_count: 12, has_rls: true },
+      { table_name: 'ads', row_count: 5, has_rls: true },
       { table_name: 'orders', row_count: 8, has_rls: true },
       { table_name: 'order_items', row_count: 24, has_rls: true }
     ],
-    'public': [
-      { table_name: 'trainers', row_count: 12, has_rls: true },
-      { table_name: 'superadmins', row_count: 3, has_rls: true },
-      { table_name: 'shop_items', row_count: 20, has_rls: true },
-      { table_name: 'ads', row_count: 8, has_rls: true },
-      { table_name: 'orders', row_count: 18, has_rls: true },
-      { table_name: 'order_items', row_count: 32, has_rls: true }
+    'sportiko_pt': [
+      { table_name: 'trainers', row_count: 3, has_rls: true },
+      { table_name: 'players_auth', row_count: 1, has_rls: true },
+      { table_name: 'subscription_plans', row_count: 3, has_rls: true },
+      { table_name: 'settings', row_count: 4, has_rls: true },
+      { table_name: 'ads', row_count: 2, has_rls: true }
+    ],
+    'pt_d45616a4_d90b_4358_b62c_9005f61e3d84': [
+      { table_name: 'players', row_count: 0, has_rls: true },
+      { table_name: 'assessments', row_count: 0, has_rls: true },
+      { table_name: 'exercises', row_count: 0, has_rls: true },
+      { table_name: 'homework', row_count: 0, has_rls: true },
+      { table_name: 'homework_items', row_count: 0, has_rls: true },
+      { table_name: 'products', row_count: 0, has_rls: true },
+      { table_name: 'orders', row_count: 0, has_rls: true },
+      { table_name: 'order_items', row_count: 0, has_rls: true }
     ]
   };
 
   const demoPolicies = {
+    'public': [
+      { tablename: 'trainers', policyname: 'Trainers can view and update their own profile', cmd: 'ALL', roles: ['authenticated'] },
+      { tablename: 'trainers', policyname: 'Superadmins can manage all trainers', cmd: 'ALL', roles: ['authenticated'] },
+      { tablename: 'shop_items', policyname: 'Anyone can view active shop items', cmd: 'SELECT', roles: ['authenticated'] },
+      { tablename: 'ads', policyname: 'Users can view relevant active ads', cmd: 'SELECT', roles: ['authenticated'] }
+    ],
     'sportiko_pt': [
       { tablename: 'trainers', policyname: 'Trainers can view and update their own profile', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'trainers', policyname: 'Admin can manage all trainers', cmd: 'ALL', roles: ['authenticated'] },
       { tablename: 'players_auth', policyname: 'Trainers can manage their own players', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'players_auth', policyname: 'Players can view their own auth', cmd: 'SELECT', roles: ['authenticated'] },
       { tablename: 'subscription_plans', policyname: 'Anyone can view active subscription plans', cmd: 'SELECT', roles: ['authenticated'] }
     ],
-    'pt_abc123def456': [
+    'pt_d45616a4_d90b_4358_b62c_9005f61e3d84': [
       { tablename: 'players', policyname: 'trainer_all_access', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'players', policyname: 'player_view_own', cmd: 'SELECT', roles: ['authenticated'] },
       { tablename: 'exercises', policyname: 'trainer_all_access', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'exercises', policyname: 'player_view_exercises', cmd: 'SELECT', roles: ['authenticated'] },
-      { tablename: 'homework', policyname: 'trainer_all_access', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'homework', policyname: 'player_view_own_homework', cmd: 'SELECT', roles: ['authenticated'] }
-    ],
-    'public': [
-      { tablename: 'trainers', policyname: 'Superadmins can do everything with trainers', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'trainers', policyname: 'Trainers can view and update their own profile', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'superadmins', policyname: 'Only superadmins can access superadmins table', cmd: 'ALL', roles: ['authenticated'] },
-      { tablename: 'shop_items', policyname: 'Anyone can view active shop items', cmd: 'SELECT', roles: ['authenticated'] },
-      { tablename: 'shop_items', policyname: 'Only superadmins can manage shop items', cmd: 'ALL', roles: ['authenticated'] }
+      { tablename: 'homework', policyname: 'trainer_all_access', cmd: 'ALL', roles: ['authenticated'] }
     ]
   };
 
-  // List of test users that should be created
   const testUsers = [
-    { email: 'superadmin_pt@sportiko.com', password: 'pass123', role: 'superadmin' },
-    { email: 'trainer_pt@sportiko.com', password: 'pass123', role: 'trainer' },
-    { email: 'player_pt@sportiko.com', password: 'pass123', role: 'player' }
+    { email: 'superadmin_pt@sportiko.eu', password: 'pass123', role: 'superadmin' },
+    { email: 'trainer_pt@sportiko.eu', password: 'pass123', role: 'trainer' },
+    { email: 'player_pt@sportiko.eu', password: 'pass123', role: 'player' }
   ];
 
   const tabs = [
@@ -109,22 +102,13 @@ const SettingsPage = () => {
   const loadSchemas = async () => {
     setLoading(true);
     try {
-      // First try the new function path
+      // Try the public function first
       const { data: schemaData, error: schemaError } = await supabase.rpc('get_schemas_info');
       
       if (schemaError) {
         console.error('Error loading schemas with get_schemas_info:', schemaError);
-        
-        // Try alternative path
-        const { data: altData, error: altError } = await supabase.rpc('sportiko_pt.get_schemas_info');
-        
-        if (altError) {
-          console.error('Error loading schemas with sportiko_pt.get_schemas_info:', altError);
-          // Fall back to demo data
-          setSchemas(demoSchemas);
-        } else {
-          setSchemas(altData || demoSchemas);
-        }
+        // Fall back to demo data
+        setSchemas(demoSchemas);
       } else {
         setSchemas(schemaData || demoSchemas);
       }
@@ -143,9 +127,8 @@ const SettingsPage = () => {
       // Get tables for selected schema
       let tablesData = null;
       let tablesError = null;
-      
+
       try {
-        // First try the new function path
         const result = await supabase.rpc('get_tables_info', { schema_name: selectedSchema });
         tablesData = result.data;
         tablesError = result.error;
@@ -153,34 +136,19 @@ const SettingsPage = () => {
         console.error('Error calling get_tables_info:', err);
         tablesError = err;
       }
-      
+
       if (tablesError) {
         console.error('Error loading tables:', tablesError);
-        // Try alternative path
-        try {
-          const altResult = await supabase.rpc('sportiko_pt.get_tables_info', { schema_name: selectedSchema });
-          if (altResult.error) {
-            console.error('Error with alternative tables function:', altResult.error);
-            // Fall back to demo data
-            setTables(demoTables[selectedSchema] || []);
-          } else {
-            setTables(altResult.data || demoTables[selectedSchema] || []);
-          }
-        } catch (e) {
-          console.error('Exception in alternative tables function:', e);
-          // Fall back to demo data
-          setTables(demoTables[selectedSchema] || []);
-        }
+        setTables(demoTables[selectedSchema] || []);
       } else {
         setTables(tablesData || demoTables[selectedSchema] || []);
       }
 
-      // Get policies for selected schema
+      // Get policies for selected schema  
       let policiesData = null;
       let policiesError = null;
-      
+
       try {
-        // First try the new function path
         const result = await supabase.rpc('get_policies_info', { schema_name: selectedSchema });
         policiesData = result.data;
         policiesError = result.error;
@@ -188,32 +156,53 @@ const SettingsPage = () => {
         console.error('Error calling get_policies_info:', err);
         policiesError = err;
       }
-      
+
       if (policiesError) {
         console.error('Error loading policies:', policiesError);
-        // Try alternative path
-        try {
-          const altResult = await supabase.rpc('sportiko_pt.get_policies_info', { schema_name: selectedSchema });
-          if (altResult.error) {
-            console.error('Error with alternative policies function:', altResult.error);
-            // Fall back to demo data
-            setPolicies(demoPolicies[selectedSchema] || []);
-          } else {
-            setPolicies(altResult.data || demoPolicies[selectedSchema] || []);
-          }
-        } catch (e) {
-          console.error('Exception in alternative policies function:', e);
-          // Fall back to demo data
-          setPolicies(demoPolicies[selectedSchema] || []);
-        }
+        setPolicies(demoPolicies[selectedSchema] || []);
       } else {
         setPolicies(policiesData || demoPolicies[selectedSchema] || []);
       }
+
     } catch (error) {
       console.error('Error loading database info:', error);
-      // Fall back to demo data
       setTables(demoTables[selectedSchema] || []);
       setPolicies(demoPolicies[selectedSchema] || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createTenantSchema = async () => {
+    if (!isSuperadmin) {
+      toast.error('Only superadmins can create tenant schemas');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      toast.loading('Creating tenant schema...', { id: 'create-schema' });
+
+      // Get the trainer ID (assuming current user is the trainer we want to create schema for)
+      const trainerId = 'd45616a4-d90b-4358-b62c-9005f61e3d84'; // Demo trainer ID
+
+      const { error } = await supabase.rpc('create_basic_tenant_schema', {
+        trainer_id: trainerId
+      });
+
+      if (error) {
+        console.error('Error creating tenant schema:', error);
+        throw error;
+      }
+
+      toast.success('Tenant schema created successfully!', { id: 'create-schema' });
+      
+      // Refresh the schemas list
+      await loadSchemas();
+      
+    } catch (error) {
+      console.error('Error creating tenant schema:', error);
+      toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
     } finally {
       setLoading(false);
     }
@@ -226,13 +215,24 @@ const SettingsPage = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Database Schemas</h3>
-          <button
-            onClick={loadSchemas}
-            className="flex items-center px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <SafeIcon icon={FiRefreshCw} className="w-4 h-4 mr-2" />
-            Refresh
-          </button>
+          <div className="flex space-x-2">
+            {isSuperadmin && (
+              <button
+                onClick={createTenantSchema}
+                disabled={loading}
+                className="flex items-center px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                Create Tenant Schema
+              </button>
+            )}
+            <button
+              onClick={loadSchemas}
+              className="flex items-center px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <SafeIcon icon={FiRefreshCw} className="w-4 h-4 mr-2" />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -284,7 +284,8 @@ const SettingsPage = () => {
                       ? 'Per-trainer isolated schema'
                       : schema.schema_name === 'sportiko_pt'
                       ? 'Main application schema'
-                      : 'Shared schema'}
+                      : 'Legacy/shared schema'
+                    }
                   </p>
                 </div>
               ))}
@@ -315,15 +316,16 @@ const SettingsPage = () => {
               onChange={(e) => setSelectedSchema(e.target.value)}
               className="ml-4 px-3 py-1 border border-gray-300 rounded-md text-sm"
             >
+              <option value="public">public (Legacy)</option>
               <option value="sportiko_pt">sportiko_pt (Main)</option>
-              <option value="public">public (Shared)</option>
               {schemas
                 .filter(s => s.is_trainer_schema)
                 .map(s => (
                   <option key={s.schema_name} value={s.schema_name}>
                     {s.schema_name} (Trainer)
                   </option>
-                ))}
+                ))
+              }
             </select>
           </div>
           <button
@@ -399,13 +401,10 @@ const SettingsPage = () => {
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
           <h4 className="text-sm font-semibold text-blue-800 mb-2">Schema Structure</h4>
           <p className="text-sm text-blue-600">
-            The <strong>{selectedSchema}</strong> schema contains {tables.length} tables with Row
-            Level Security (RLS) enabled.
-            {selectedSchema === 'sportiko_pt' &&
-              " This is the main application schema containing shared data across all trainers."}
+            The <strong>{selectedSchema}</strong> schema contains {tables.length} tables with Row Level Security (RLS) enabled.
+            {selectedSchema === 'sportiko_pt' && " This is the main application schema containing shared data across all trainers."}
             {selectedSchema === 'public' && " This is the legacy schema with basic user tables."}
-            {selectedSchema.startsWith('pt_') &&
-              " This is an isolated trainer schema containing trainer-specific data."}
+            {selectedSchema.startsWith('pt_') && " This is an isolated trainer schema containing trainer-specific data."}
           </p>
         </div>
       </div>
@@ -423,15 +422,16 @@ const SettingsPage = () => {
               onChange={(e) => setSelectedSchema(e.target.value)}
               className="ml-4 px-3 py-1 border border-gray-300 rounded-md text-sm"
             >
+              <option value="public">public (Legacy)</option>
               <option value="sportiko_pt">sportiko_pt (Main)</option>
-              <option value="public">public (Shared)</option>
               {schemas
                 .filter(s => s.is_trainer_schema)
                 .map(s => (
                   <option key={s.schema_name} value={s.schema_name}>
                     {s.schema_name} (Trainer)
                   </option>
-                ))}
+                ))
+              }
             </select>
           </div>
           <button
@@ -478,7 +478,7 @@ const SettingsPage = () => {
                                 {policy.cmd}
                               </span>
                               <span className="text-gray-600 text-xs">
-                                {policy.roles.join(',')}
+                                {policy.roles.join(', ')}
                               </span>
                             </div>
                           </div>
@@ -492,14 +492,10 @@ const SettingsPage = () => {
             <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
               <h4 className="text-sm font-semibold text-yellow-800 mb-2">Policy Information</h4>
               <p className="text-sm text-yellow-700">
-                Policies in the <strong>{selectedSchema}</strong> schema control access to data based
-                on user roles and tenant isolation.
-                {selectedSchema === 'sportiko_pt' &&
-                  " Main schema policies ensure trainers can only access their own data."}
-                {selectedSchema === 'public' &&
-                  " Public schema policies provide basic role-based access to shared resources."}
-                {selectedSchema.startsWith('pt_') &&
-                  " This schema uses tenant isolation to ensure trainers can only access their own player data."}
+                Policies in the <strong>{selectedSchema}</strong> schema control access to data based on user roles and tenant isolation.
+                {selectedSchema === 'sportiko_pt' && " Main schema policies ensure trainers can only access their own data."}
+                {selectedSchema === 'public' && " Public schema policies provide basic role-based access to shared resources."}
+                {selectedSchema.startsWith('pt_') && " This schema uses tenant isolation to ensure trainers can only access their own player data."}
               </p>
             </div>
           </div>
@@ -515,6 +511,7 @@ const SettingsPage = () => {
           <h3 className="text-lg font-semibold text-gray-900">Test Users</h3>
           <CreateUsersButton />
         </div>
+
         <p className="text-sm text-gray-600 mb-4">
           Create test users for the application. All users will have the password:{' '}
           <code className="bg-gray-100 px-2 py-1 rounded">pass123</code>
@@ -575,17 +572,14 @@ const SettingsPage = () => {
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Database Relationships</h4>
           <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
             <li>
-              <strong>superadmin_pt@sportiko.com</strong> - Exists in <code>auth.users</code> and{' '}
+              <strong>superadmin_pt@sportiko.eu</strong> - Exists in <code>auth.users</code> and{' '}
               <code>public.superadmins</code>
             </li>
             <li>
-              <strong>trainer_pt@sportiko.com</strong> - Exists in <code>auth.users</code>,
-              <code>public.trainers</code>,and <code>sportiko_pt.trainers</code> with a dedicated
-              schema <code>pt_[trainer_id]</code>
+              <strong>trainer_pt@sportiko.eu</strong> - Exists in <code>auth.users</code>, <code>public.trainers</code>, and <code>sportiko_pt.trainers</code> with a dedicated schema <code>pt_[trainer_id]</code>
             </li>
             <li>
-              <strong>player_pt@sportiko.com</strong> - Exists in <code>auth.users</code>,
-              <code>sportiko_pt.players_auth</code>,and <code>pt_[trainer_id].players</code>
+              <strong>player_pt@sportiko.eu</strong> - Exists in <code>auth.users</code>, <code>sportiko_pt.players_auth</code>, and <code>pt_[trainer_id].players</code>
             </li>
           </ul>
         </div>
@@ -596,9 +590,10 @@ const SettingsPage = () => {
   const renderSystemTab = () => (
     <div className="space-y-6">
       <DatabaseConfig />
-
+      
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Database Architecture</h3>
+        
         <div className="space-y-4">
           <div className="p-4 border rounded-lg">
             <h4 className="font-medium text-gray-900 mb-2">Public Schema</h4>

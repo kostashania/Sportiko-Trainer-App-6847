@@ -1,17 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { useSuperadmin } from '../../contexts/SuperadminContext';
-import { supabase } from '../../lib/supabase';
+import React, {useState, useEffect} from 'react';
+import {useAuth} from '../../contexts/AuthContext';
+import {useSuperadmin} from '../../contexts/SuperadminContext';
+import {supabase} from '../../lib/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
-import { motion } from 'framer-motion';
+import {motion} from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const { FiUser, FiMail, FiCalendar, FiSave, FiCamera, FiKey, FiShield, FiDatabase, FiInfo, FiRefreshCw } = FiIcons;
+const {FiUser, FiMail, FiCalendar, FiSave, FiCamera, FiKey, FiShield, FiDatabase, FiInfo, FiRefreshCw} = FiIcons;
 
 const ProfileManagement = () => {
-  const { user, profile, fetchProfile } = useAuth();
-  const { isSuperadmin, loading: superadminLoading, checkSuperadminStatus } = useSuperadmin();
+  const {user, profile, fetchProfile} = useAuth();
+  const {isSuperadmin, loading: superadminLoading, checkSuperadminStatus} = useSuperadmin();
   const [loading, setLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,7 +57,7 @@ const ProfileManagement = () => {
 
       // Check if user exists in superadmins table
       try {
-        const { data: superadminData, error: superadminError } = await supabase
+        const {data: superadminData, error: superadminError} = await supabase
           .from('superadmins')
           .select('*')
           .eq('id', user.id);
@@ -76,7 +76,7 @@ const ProfileManagement = () => {
 
       // Check if user exists in trainers table
       try {
-        const { data: trainerData, error: trainerError } = await supabase
+        const {data: trainerData, error: trainerError} = await supabase
           .from('trainers')
           .select('*')
           .eq('id', user.id);
@@ -95,7 +95,7 @@ const ProfileManagement = () => {
 
       // Check if user exists in players_auth table
       try {
-        const { data: playerData, error: playerError } = await supabase
+        const {data: playerData, error: playerError} = await supabase
           .from('players_auth')
           .select('*')
           .eq('id', user.id);
@@ -114,8 +114,8 @@ const ProfileManagement = () => {
 
       // Test the is_superadmin function
       try {
-        const { data: functionResult, error: functionError } = await supabase
-          .rpc('is_superadmin', { user_id: user.id });
+        const {data: functionResult, error: functionError} = await supabase
+          .rpc('is_superadmin', {user_id: user.id});
 
         info.checks.isSuperadminFunction = {
           result: functionResult,
@@ -137,7 +137,7 @@ const ProfileManagement = () => {
       setDebugInfo(info);
     } catch (error) {
       console.error('Error loading debug info:', error);
-      setDebugInfo({ error: error.message });
+      setDebugInfo({error: error.message});
     }
   };
 
@@ -161,54 +161,32 @@ const ProfileManagement = () => {
 
     try {
       setLoading(true);
-      toast.loading('Fixing superadmin status...', { id: 'fix-superadmin' });
+      toast.loading('Fixing superadmin status...', {id: 'fix-superadmin'});
 
-      // Use the service role to bypass RLS for initial setup
-      // Since we can't use service role in browser, we'll create a special function
-      const { data, error } = await supabase.rpc('create_superadmin_if_allowed', {
-        user_id: user.id,
-        user_email: user.email,
-        user_name: user.user_metadata?.full_name || formData.full_name || 'Super Admin'
-      });
+      // The new superadmin_safe_access policy should allow this insert
+      const {error: insertError} = await supabase
+        .from('superadmins')
+        .insert([{
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || formData.full_name || 'Super Admin'
+        }])
+        .select();
 
-      if (error) {
-        // If the function doesn't exist, try the regular insert with better error handling
-        console.warn('create_superadmin_if_allowed function not found, trying regular insert');
-        
-        // First, let's try to update the RLS policy temporarily by calling a function
-        try {
-          await supabase.rpc('enable_superadmin_self_insert');
-        } catch (policyError) {
-          console.warn('Could not modify RLS policy:', policyError);
-        }
-
-        // Try the insert again
-        const { error: insertError } = await supabase
-          .from('superadmins')
-          .insert([{
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || formData.full_name || 'Super Admin'
-          }])
-          .select();
-
-        if (insertError && insertError.code !== '23505') { // Ignore duplicate key error
-          throw insertError;
-        }
+      if (insertError && insertError.code !== '23505') { // Ignore duplicate key error
+        throw insertError;
       }
 
       // Refresh everything
       await handleRefreshProfile();
-      
-      toast.success('Superadmin status fixed!', { id: 'fix-superadmin' });
+      toast.success('Superadmin status fixed!', {id: 'fix-superadmin'});
     } catch (error) {
       console.error('Error fixing superadmin:', error);
-      
       // Show a more helpful error message
       if (error.code === '42501') {
-        toast.error('RLS policy prevents self-insertion. Please contact database administrator.', { id: 'fix-superadmin' });
+        toast.error('RLS policy prevents self-insertion. The superadmin_safe_access policy should handle this.', {id: 'fix-superadmin'});
       } else {
-        toast.error('Failed to fix superadmin status: ' + error.message, { id: 'fix-superadmin' });
+        toast.error('Failed to fix superadmin status: ' + error.message, {id: 'fix-superadmin'});
       }
     } finally {
       setLoading(false);
@@ -240,7 +218,7 @@ const ProfileManagement = () => {
         tableName = 'superadmins';
       }
 
-      const { error } = await supabase
+      const {error} = await supabase
         .from(tableName)
         .update(updateData)
         .eq('id', user.id);
@@ -249,8 +227,8 @@ const ProfileManagement = () => {
 
       // Update auth user metadata if full name changed
       if (formData.full_name !== profile?.full_name) {
-        const { error: authError } = await supabase.auth.updateUser({
-          data: { full_name: formData.full_name }
+        const {error: authError} = await supabase.auth.updateUser({
+          data: {full_name: formData.full_name}
         });
 
         if (authError) {
@@ -294,7 +272,7 @@ const ProfileManagement = () => {
 
       // Upload file
       console.debug('⬆️ Uploading to bucket: avatars');
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const {data: uploadData, error: uploadError} = await supabase.storage
         .from('avatars')
         .upload(fileName, file, {
           cacheControl: '3600',
@@ -309,7 +287,7 @@ const ProfileManagement = () => {
       console.debug('✅ Upload successful:', uploadData);
 
       // Get public URL
-      const { data: urlData } = supabase.storage
+      const {data: urlData} = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
@@ -323,7 +301,7 @@ const ProfileManagement = () => {
       const tableName = profile?.role === 'superadmin' ? 'superadmins' : 'trainers';
       console.debug('📝 Updating profile in table:', tableName);
 
-      const { error: updateError } = await supabase
+      const {error: updateError} = await supabase
         .from(tableName)
         .update({
           avatar_url: urlData.publicUrl,
@@ -359,8 +337,8 @@ const ProfileManagement = () => {
     <div className="space-y-6">
       {/* User Information Section */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{opacity: 0, y: 20}}
+        animate={{opacity: 1, y: 0}}
         className="bg-white rounded-lg shadow p-6"
       >
         <div className="flex items-center justify-between mb-6">
@@ -422,9 +400,7 @@ const ProfileManagement = () => {
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <span className={`w-3 h-3 rounded-full ${
-                      debugInfo.checks.superadminTable?.exists ? 'bg-green-500' : 'bg-red-500'
-                    }`}></span>
+                    <span className={`w-3 h-3 rounded-full ${debugInfo.checks.superadminTable?.exists ? 'bg-green-500' : 'bg-red-500'}`}></span>
                     {!debugInfo.checks.superadminTable?.exists && (
                       <button
                         onClick={handleFixSuperadmin}
@@ -445,9 +421,7 @@ const ProfileManagement = () => {
                       {debugInfo.checks.trainerTable?.exists ? 'Found in table' : 'Not found in table'}
                     </p>
                   </div>
-                  <span className={`w-3 h-3 rounded-full ${
-                    debugInfo.checks.trainerTable?.exists ? 'bg-green-500' : 'bg-gray-300'
-                  }`}></span>
+                  <span className={`w-3 h-3 rounded-full ${debugInfo.checks.trainerTable?.exists ? 'bg-green-500' : 'bg-gray-300'}`}></span>
                 </div>
 
                 {/* Player Table Check */}
@@ -458,9 +432,7 @@ const ProfileManagement = () => {
                       {debugInfo.checks.playerTable?.exists ? 'Found in table' : 'Not found in table'}
                     </p>
                   </div>
-                  <span className={`w-3 h-3 rounded-full ${
-                    debugInfo.checks.playerTable?.exists ? 'bg-green-500' : 'bg-gray-300'
-                  }`}></span>
+                  <span className={`w-3 h-3 rounded-full ${debugInfo.checks.playerTable?.exists ? 'bg-green-500' : 'bg-gray-300'}`}></span>
                 </div>
 
                 {/* Function Check */}
@@ -474,9 +446,7 @@ const ProfileManagement = () => {
                       )}
                     </p>
                   </div>
-                  <span className={`w-3 h-3 rounded-full ${
-                    debugInfo.checks.isSuperadminFunction?.result ? 'bg-green-500' : 'bg-red-500'
-                  }`}></span>
+                  <span className={`w-3 h-3 rounded-full ${debugInfo.checks.isSuperadminFunction?.result ? 'bg-green-500' : 'bg-red-500'}`}></span>
                 </div>
 
                 {/* Known IDs Check */}
@@ -488,10 +458,7 @@ const ProfileManagement = () => {
                       Email Match: {debugInfo.checks.knownSuperadmin?.isKnownEmail ? 'YES' : 'NO'}
                     </p>
                   </div>
-                  <span className={`w-3 h-3 rounded-full ${
-                    debugInfo.checks.knownSuperadmin?.isKnownId || debugInfo.checks.knownSuperadmin?.isKnownEmail 
-                      ? 'bg-green-500' : 'bg-gray-300'
-                  }`}></span>
+                  <span className={`w-3 h-3 rounded-full ${debugInfo.checks.knownSuperadmin?.isKnownId || debugInfo.checks.knownSuperadmin?.isKnownEmail ? 'bg-green-500' : 'bg-gray-300'}`}></span>
                 </div>
               </div>
             </div>
@@ -500,9 +467,9 @@ const ProfileManagement = () => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-medium text-blue-900 mb-2">Troubleshooting Guide</h4>
               <div className="text-sm text-blue-800 space-y-1">
+                <p>• The new <code>superadmin_safe_access</code> policy allows superadmin access via ID, email, or existing record.</p>
                 <p>• If the is_superadmin() function returns TRUE but you're not in the table, the database function is working correctly.</p>
-                <p>• The RLS (Row Level Security) policies might prevent automatic insertion. This is a security feature.</p>
-                <p>• Contact your database administrator to manually insert the superadmin record if the Fix button doesn't work.</p>
+                <p>• The Fix button should work with the new policy that allows self-insertion for known superadmin credentials.</p>
                 <p>• The system recognizes you as a superadmin based on your email and ID even without the database record.</p>
               </div>
             </div>
@@ -522,12 +489,12 @@ const ProfileManagement = () => {
 
       {/* Profile Management Form */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{opacity: 0, y: 20}}
+        animate={{opacity: 1, y: 0}}
         className="bg-white rounded-lg shadow p-6"
       >
         <h3 className="text-lg font-semibold text-gray-900 mb-6">Profile Management</h3>
-
+        
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Avatar Section */}
           <div className="flex items-center space-x-6">

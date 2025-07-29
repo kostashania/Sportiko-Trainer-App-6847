@@ -128,15 +128,9 @@ export const demoAuth = {
     // For demo purposes, any password works for demo users
     if (demoAuth.isDemoUser(email)) {
       const user = demoAuth.getDemoUser(email);
-      return {
-        data: { user },
-        error: null
-      };
+      return { data: { user }, error: null };
     }
-    return {
-      data: null,
-      error: { message: 'Invalid credentials' }
-    };
+    return { data: null, error: { message: 'Invalid credentials' } };
   }
 };
 
@@ -144,41 +138,17 @@ export const demoAuth = {
 export const createTenantSchema = async (trainerId) => {
   try {
     console.log('Creating tenant schema for trainer:', trainerId);
-    
+
     // Use the database function that should be available to authenticated users
-    const { data, error } = await supabase.rpc('sportiko_pt.create_trainer_schema', {
+    const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
     });
-    
+
     if (error) {
-      console.error('Error calling create_trainer_schema:', error);
-      
-      // Try alternative function names
-      const { data: data2, error: error2 } = await supabase.rpc('create_trainer_schema', {
-        trainer_id: trainerId
-      });
-      
-      if (error2) {
-        console.error('Error with alternative function call:', error2);
-        
-        // Try the public schema function
-        const { data: data3, error: error3 } = await supabase.rpc('create_tenant_schema', {
-          trainer_id: trainerId
-        });
-        
-        if (error3) {
-          console.error('Error with public function call:', error3);
-          throw error3;
-        }
-        
-        console.log('Schema created successfully with public function');
-        return true;
-      }
-      
-      console.log('Schema created successfully with alternative function');
-      return true;
+      console.error('Error calling create_basic_tenant_schema:', error);
+      throw error;
     }
-    
+
     console.log('Schema created successfully:', data);
     return true;
   } catch (error) {
@@ -208,15 +178,14 @@ export const dbConfig = {
     try {
       const stored = localStorage.getItem('sportiko_db_config');
       if (!stored) return null;
-      
+
       const config = JSON.parse(stored);
-      
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem('sportiko_db_config');
         return null;
       }
-      
+
       return config;
     } catch (error) {
       console.error('Error retrieving DB config:', error);

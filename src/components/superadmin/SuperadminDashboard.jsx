@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import StatsCard from '../dashboard/StatsCard';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp } = FiIcons;
+const { FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp, FiDatabase, FiShield, FiSettings } = FiIcons;
 
 const SuperadminDashboard = () => {
   const navigate = useNavigate();
@@ -18,9 +18,11 @@ const SuperadminDashboard = () => {
     activeOrders: 0
   });
   const [loading, setLoading] = useState(true);
+  const [recentActivity, setRecentActivity] = useState([]);
 
   useEffect(() => {
     loadSuperadminStats();
+    loadRecentActivity();
   }, []);
 
   const loadSuperadminStats = async () => {
@@ -57,12 +59,63 @@ const SuperadminDashboard = () => {
     }
   };
 
+  const loadRecentActivity = async () => {
+    try {
+      // Get recent trainers
+      const { data: recentTrainers } = await supabase
+        .from('trainers')
+        .select('full_name, email, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      // Get recent orders
+      const { data: recentOrders } = await supabase
+        .from('orders')
+        .select('total_amount, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      const activities = [
+        ...(recentTrainers?.map(trainer => ({
+          id: `trainer-${trainer.email}`,
+          type: 'trainer_registered',
+          message: `New trainer ${trainer.full_name} registered`,
+          timestamp: trainer.created_at,
+          icon: FiUsers,
+          color: 'blue'
+        })) || []),
+        ...(recentOrders?.map(order => ({
+          id: `order-${order.created_at}`,
+          type: 'order_placed',
+          message: `Order placed for $${order.total_amount}`,
+          timestamp: order.created_at,
+          icon: FiShoppingBag,
+          color: 'green'
+        })) || [])
+      ];
+
+      // Sort by timestamp and take top 10
+      activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setRecentActivity(activities.slice(0, 10));
+    } catch (error) {
+      console.error('Error loading recent activity:', error);
+    }
+  };
+
   const handleManageTrainers = () => {
     navigate('/superadmin/trainers');
   };
 
   const handleManageShop = () => {
     navigate('/superadmin/shop');
+  };
+
+  const handleManageAds = () => {
+    navigate('/superadmin/ads');
+  };
+
+  const handleSystemInfo = () => {
+    navigate('/superadmin/info');
   };
 
   const handleViewAnalytics = () => {
@@ -77,6 +130,15 @@ const SuperadminDashboard = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Superadmin Dashboard</h1>
           <p className="text-gray-600">Manage the entire Sportiko platform</p>
+        </div>
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={handleSystemInfo}
+            className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            <SafeIcon icon={FiDatabase} className="w-4 h-4 mr-2" />
+            System Info
+          </button>
         </div>
       </div>
 
@@ -112,36 +174,57 @@ const SuperadminDashboard = () => {
         />
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions & Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="space-y-3">
-            <button 
+            <button
               onClick={handleManageTrainers}
               className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
                 <SafeIcon icon={FiUsers} className="w-5 h-5 text-blue-600 mr-3" />
-                <span className="text-blue-700">Manage Trainers</span>
+                <div>
+                  <span className="text-blue-700 font-medium">Manage Trainers</span>
+                  <p className="text-blue-600 text-sm">Add, edit, and manage trainer accounts</p>
+                </div>
               </div>
             </button>
-            <button 
+            <button
               onClick={handleManageShop}
               className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
                 <SafeIcon icon={FiShoppingBag} className="w-5 h-5 text-green-600 mr-3" />
-                <span className="text-green-700">Manage Shop Items</span>
+                <div>
+                  <span className="text-green-700 font-medium">Manage Shop Items</span>
+                  <p className="text-green-600 text-sm">Add products and manage inventory</p>
+                </div>
               </div>
             </button>
-            <button 
-              onClick={handleViewAnalytics}
+            <button
+              onClick={handleManageAds}
               className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
                 <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-purple-600 mr-3" />
-                <span className="text-purple-700">View Analytics</span>
+                <div>
+                  <span className="text-purple-700 font-medium">Manage Advertisements</span>
+                  <p className="text-purple-600 text-sm">Create and schedule platform ads</p>
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={handleViewAnalytics}
+              className="w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
+            >
+              <div className="flex items-center">
+                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-yellow-600 mr-3" />
+                <div>
+                  <span className="text-yellow-700 font-medium">View Analytics</span>
+                  <p className="text-yellow-600 text-sm">Platform performance metrics</p>
+                </div>
               </div>
             </button>
           </div>
@@ -150,18 +233,51 @@ const SuperadminDashboard = () => {
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
           <div className="space-y-3">
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">New trainer registered</span>
+            {recentActivity.length === 0 ? (
+              <p className="text-gray-500 text-sm">No recent activity</p>
+            ) : (
+              recentActivity.map((activity) => (
+                <div key={activity.id} className="flex items-center space-x-3">
+                  <div className={`p-2 rounded-full bg-${activity.color}-50`}>
+                    <SafeIcon icon={activity.icon} className={`w-4 h-4 text-${activity.color}-600`} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-900">{activity.message}</p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(activity.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Platform Health */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Health</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+            <div className="flex items-center">
+              <SafeIcon icon={FiDatabase} className="w-5 h-5 text-green-600 mr-3" />
+              <span className="text-green-800 font-medium">Database</span>
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">Shop item added</span>
+            <span className="text-green-600 font-semibold">Healthy</span>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+            <div className="flex items-center">
+              <SafeIcon icon={FiShield} className="w-5 h-5 text-green-600 mr-3" />
+              <span className="text-green-800 font-medium">Security</span>
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">Order processed</span>
+            <span className="text-green-600 font-semibold">Protected</span>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+            <div className="flex items-center">
+              <SafeIcon icon={FiSettings} className="w-5 h-5 text-green-600 mr-3" />
+              <span className="text-green-800 font-medium">Services</span>
             </div>
+            <span className="text-green-600 font-semibold">Running</span>
           </div>
         </div>
       </div>

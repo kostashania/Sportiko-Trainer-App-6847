@@ -24,7 +24,6 @@ export const AuthProvider = ({ children }) => {
       try {
         const parsedUser = JSON.parse(demoUser);
         setUser(parsedUser);
-        
         // Get the full profile for the demo user
         const demoProfile = demoAuth.getDemoUser(parsedUser.email);
         if (demoProfile) {
@@ -132,7 +131,6 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.error('No profile found for user:', user.email);
-      
       // Create a fallback profile with basic information
       setProfile({
         id: user.id,
@@ -143,7 +141,6 @@ export const AuthProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('Error fetching profile:', error);
-      
       // Create a fallback profile with basic information
       if (user) {
         setProfile({
@@ -162,7 +159,6 @@ export const AuthProvider = ({ children }) => {
       // Check if this is a demo user
       if (demoAuth.isDemoUser(email)) {
         const { data, error } = demoAuth.signIn(email, password);
-        
         if (error) {
           throw error;
         }
@@ -171,7 +167,6 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         setProfile(demoProfile);
         localStorage.setItem('sportiko_user', JSON.stringify(data.user));
-        
         return { data, error: null };
       }
 
@@ -228,10 +223,7 @@ export const AuthProvider = ({ children }) => {
       // For demo purposes, we can simulate signup success for demo users
       if (demoAuth.isDemoUser(email)) {
         const demoProfile = demoAuth.getDemoUser(email);
-        return {
-          data: { user: demoProfile },
-          error: null
-        };
+        return { data: { user: demoProfile }, error: null };
       }
 
       const { data, error } = await supabase.auth.signUp({

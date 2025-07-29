@@ -6,17 +6,20 @@ import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase } = FiIcons;
+const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiEdit, FiTrash2, FiEye, FiEyeOff } = FiIcons;
 
 const TrainerManagement = () => {
   const [trainers, setTrainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [editingTrainer, setEditingTrainer] = useState(null);
   const [newTrainer, setNewTrainer] = useState({
     email: '',
     full_name: '',
     password: 'pass123', // Default password
+    subscription_plan: 'trial',
+    trial_days: 14
   });
   const [processingAction, setProcessingAction] = useState(null);
 
@@ -53,9 +56,7 @@ const TrainerManagement = () => {
       if (error) throw error;
 
       setTrainers(trainers.map(trainer =>
-        trainer.id === trainerId
-          ? { ...trainer, is_active: !currentStatus }
-          : trainer
+        trainer.id === trainerId ? { ...trainer, is_active: !currentStatus } : trainer
       ));
 
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
@@ -85,9 +86,7 @@ const TrainerManagement = () => {
       if (error) throw error;
 
       setTrainers(trainers.map(trainer =>
-        trainer.id === trainerId
-          ? { ...trainer, trial_end: newTrialEnd.toISOString() }
-          : trainer
+        trainer.id === trainerId ? { ...trainer, trial_end: newTrialEnd.toISOString() } : trainer
       ));
 
       toast.success('Trial extended by 14 days');
@@ -104,78 +103,73 @@ const TrainerManagement = () => {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
 
-      // First try the basic schema creation
-      const { error: basicError } = await supabase.rpc('create_basic_tenant_schema', {
+      const { error } = await supabase.rpc('create_basic_tenant_schema', {
         trainer_id: trainerId
       });
 
-      if (basicError) {
-        console.error('Error with basic schema creation:', basicError);
-        
-        // Try the full schema creation as fallback
-        const { error: fullError } = await supabase.rpc('create_tenant_schema', {
-          trainer_id: trainerId
-        });
-
-        if (fullError) {
-          console.error('Error with full schema creation:', fullError);
-          throw fullError;
-        }
+      if (error) {
+        console.error('Error creating tenant schema:', error);
+        throw error;
       }
 
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
     } catch (error) {
       console.error('Error creating tenant schema:', error);
-      
-      // Try manual schema creation as last resort
-      try {
-        const schemaName = `pt_${trainerId.replace(/-/g, '_')}`;
-        const { error: manualError } = await supabase.rpc('execute_sql', {
-          sql: `
-            -- Create schema
-            CREATE SCHEMA IF NOT EXISTS ${schemaName};
-            
-            -- Create players table
-            CREATE TABLE IF NOT EXISTS ${schemaName}.players (
-              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-              name TEXT NOT NULL,
-              birth_date DATE,
-              position TEXT,
-              contact TEXT,
-              avatar_url TEXT,
-              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            -- Enable RLS
-            ALTER TABLE ${schemaName}.players ENABLE ROW LEVEL SECURITY;
-            
-            -- Create policy
-            CREATE POLICY "trainer_all_access" ON ${schemaName}.players
-              FOR ALL TO authenticated
-              USING (auth.uid() = '${trainerId}')
-              WITH CHECK (auth.uid() = '${trainerId}');
-              
-            -- Grant permissions
-            GRANT USAGE ON SCHEMA ${schemaName} TO authenticated;
-            GRANT ALL ON ALL TABLES IN SCHEMA ${schemaName} TO authenticated;
-          `
-        });
-
-        if (manualError) {
-          throw manualError;
-        }
-
-        toast.success('Schema created manually!', { id: 'create-schema' });
-      } catch (manualError) {
-        console.error('Manual schema creation failed:', manualError);
-        toast.error('Failed to create tenant schema', { id: 'create-schema' });
-      }
+      toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
     } finally {
       setProcessingAction(null);
     }
   };
 
-  const handleAddTrainer = async () => {
+  const handleAddTrainer = () => {
+    setEditingTrainer(null);
+    setNewTrainer({
+      email: '',
+      full_name: '',
+      password: 'pass123',
+      subscription_plan: 'trial',
+      trial_days: 14
+    });
+    setShowModal(true);
+  };
+
+  const handleEditTrainer = (trainer) => {
+    setEditingTrainer(trainer);
+    setNewTrainer({
+      email: trainer.email,
+      full_name: trainer.full_name,
+      password: 'pass123',
+      subscription_plan: trainer.subscription_plan || 'trial',
+      trial_days: 14
+    });
+    setShowModal(true);
+  };
+
+  const handleDeleteTrainer = async (trainerId) => {
+    if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) return;
+
+    try {
+      setProcessingAction(trainerId);
+      
+      // First delete the trainer record
+      const { error } = await supabase
+        .from('trainers')
+        .delete()
+        .eq('id', trainerId);
+
+      if (error) throw error;
+
+      setTrainers(trainers.filter(t => t.id !== trainerId));
+      toast.success('Trainer deleted successfully');
+    } catch (error) {
+      console.error('Error deleting trainer:', error);
+      toast.error('Failed to delete trainer');
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
+  const handleSubmitTrainer = async () => {
     try {
       setProcessingAction('new');
 
@@ -185,111 +179,120 @@ const TrainerManagement = () => {
         return;
       }
 
-      // Check if trainer already exists
-      const { data: existingTrainer } = await supabase
-        .from('trainers')
-        .select('id')
-        .eq('email', newTrainer.email)
-        .single();
+      if (editingTrainer) {
+        // Update existing trainer
+        const { data, error } = await supabase
+          .from('trainers')
+          .update({
+            email: newTrainer.email,
+            full_name: newTrainer.full_name,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingTrainer.id)
+          .select()
+          .single();
 
-      if (existingTrainer) {
-        toast.error('A trainer with this email already exists');
-        return;
-      }
+        if (error) throw error;
 
-      // Step 1: Create user using auth signup
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: newTrainer.email,
-        password: newTrainer.password,
-        options: {
-          data: {
-            full_name: newTrainer.full_name
+        setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
+        toast.success('Trainer updated successfully');
+      } else {
+        // Create new trainer
+        // First create auth user
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: newTrainer.email,
+          password: newTrainer.password,
+          options: {
+            data: {
+              full_name: newTrainer.full_name
+            }
           }
-        }
-      });
+        });
 
-      if (signUpError) {
-        // If signup fails due to existing user, try to get the user
-        if (signUpError.message.includes('already been registered')) {
-          const { data: existingUser } = await supabase
+        if (signUpError && !signUpError.message.includes('already been registered')) {
+          throw signUpError;
+        }
+
+        // Get user ID (either from signup or existing user)
+        let userId = signUpData.user?.id;
+        
+        if (!userId) {
+          // If signup failed due to existing user, try to get the user ID
+          const { data: existingUsers } = await supabase
             .from('auth.users')
             .select('id')
             .eq('email', newTrainer.email)
             .single();
-
-          if (!existingUser) {
-            throw signUpError;
-          }
           
-          // Use existing user ID
-          signUpData.user = { id: existingUser.id };
-        } else {
-          throw signUpError;
+          userId = existingUsers?.id;
         }
-      }
 
-      const userId = signUpData.user?.id;
-      if (!userId) {
-        throw new Error('No user ID received from signup');
-      }
+        if (!userId) {
+          throw new Error('Could not get user ID');
+        }
 
-      // Step 2: Add to trainers table
-      const newTrialEnd = new Date();
-      newTrialEnd.setDate(newTrialEnd.getDate() + 14);
+        // Create trainer record
+        const newTrialEnd = new Date();
+        newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
-      const { data: trainerData, error: trainerError } = await supabase
-        .from('trainers')
-        .insert([{
-          id: userId,
-          email: newTrainer.email,
-          full_name: newTrainer.full_name,
-          trial_end: newTrialEnd.toISOString(),
-          is_active: true
-        }])
-        .select()
-        .single();
+        const { data: trainerData, error: trainerError } = await supabase
+          .from('trainers')
+          .insert([{
+            id: userId,
+            email: newTrainer.email,
+            full_name: newTrainer.full_name,
+            trial_end: newTrialEnd.toISOString(),
+            is_active: true
+          }])
+          .select()
+          .single();
 
-      if (trainerError) {
-        console.error('Error creating trainer record:', trainerError);
-        
-        // If it's a duplicate key error, the trainer might already exist
-        if (trainerError.code === '23505') {
-          // Try to fetch the existing trainer
-          const { data: existingTrainerData } = await supabase
-            .from('trainers')
-            .select('*')
-            .eq('id', userId)
-            .single();
+        if (trainerError) {
+          // If trainer already exists, try to update
+          if (trainerError.code === '23505') {
+            const { data: updatedTrainer, error: updateError } = await supabase
+              .from('trainers')
+              .update({
+                full_name: newTrainer.full_name,
+                trial_end: newTrialEnd.toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', userId)
+              .select()
+              .single();
 
-          if (existingTrainerData) {
-            setTrainers([existingTrainerData, ...trainers.filter(t => t.id !== userId)]);
-            toast.success('Trainer already exists and has been refreshed');
-            setShowModal(false);
-            setNewTrainer({ email: '', full_name: '', password: 'pass123' });
-            return;
+            if (updateError) throw updateError;
+            
+            setTrainers([updatedTrainer, ...trainers.filter(t => t.id !== userId)]);
+            toast.success('Trainer updated successfully');
+          } else {
+            throw trainerError;
+          }
+        } else {
+          // Create tenant schema automatically
+          try {
+            await createTenantSchemaForTrainer(userId);
+            setTrainers([trainerData, ...trainers]);
+            toast.success('Trainer and schema created successfully!');
+          } catch (schemaError) {
+            console.error('Schema creation failed:', schemaError);
+            setTrainers([trainerData, ...trainers]);
+            toast.success('Trainer created successfully (schema creation pending)');
           }
         }
-        
-        throw trainerError;
       }
 
-      // Step 3: Create tenant schema
-      await createTenantSchemaForTrainer(userId);
-
-      // Add to state and reset form
-      setTrainers([trainerData, ...trainers]);
       setShowModal(false);
-      setNewTrainer({ email: '', full_name: '', password: 'pass123' });
-      toast.success('Trainer added successfully!');
-
-      // Reload trainers to get fresh data
-      setTimeout(() => {
-        loadTrainers();
-      }, 1000);
-
+      setNewTrainer({
+        email: '',
+        full_name: '',
+        password: 'pass123',
+        subscription_plan: 'trial',
+        trial_days: 14
+      });
     } catch (error) {
-      console.error('Error adding trainer:', error);
-      toast.error(error.message || 'Failed to add trainer');
+      console.error('Error saving trainer:', error);
+      toast.error(error.message || 'Failed to save trainer');
     } finally {
       setProcessingAction(null);
     }
@@ -302,11 +305,10 @@ const TrainerManagement = () => {
 
   const getTrialStatus = (trialEnd) => {
     if (!trialEnd) return { status: 'expired', daysLeft: 0 };
-
     const endDate = new Date(trialEnd);
     const today = new Date();
     const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-
+    
     if (daysLeft > 0) {
       return { status: 'active', daysLeft };
     } else {
@@ -358,7 +360,7 @@ const TrainerManagement = () => {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
-            onClick={() => setShowModal(true)}
+            onClick={handleAddTrainer}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center"
           >
             <SafeIcon icon={FiPlus} className="w-5 h-5 mr-2" />
@@ -447,11 +449,19 @@ const TrainerManagement = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center">
-                            <span className="text-white font-medium">
-                              {trainer.full_name?.charAt(0) || 'T'}
-                            </span>
-                          </div>
+                          {trainer.avatar_url ? (
+                            <img
+                              src={trainer.avatar_url}
+                              alt={trainer.full_name}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center">
+                              <span className="text-white font-medium">
+                                {trainer.full_name?.charAt(0) || 'T'}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
@@ -493,6 +503,12 @@ const TrainerManagement = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <button
+                          onClick={() => handleEditTrainer(trainer)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <SafeIcon icon={FiEdit} className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
                           disabled={processingAction === trainer.id}
                           className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
@@ -522,6 +538,13 @@ const TrainerManagement = () => {
                           <SafeIcon icon={FiDatabase} className="w-3 h-3 mr-1" />
                           Create Schema
                         </button>
+                        <button
+                          onClick={() => handleDeleteTrainer(trainer.id)}
+                          disabled={processingAction === trainer.id}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <SafeIcon icon={FiTrash2} className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </motion.tr>
@@ -532,11 +555,13 @@ const TrainerManagement = () => {
         </div>
       </div>
 
-      {/* Add Trainer Modal */}
+      {/* Add/Edit Trainer Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
-            <h2 className="text-xl font-semibold mb-4">Add New Trainer</h2>
+            <h2 className="text-xl font-semibold mb-4">
+              {editingTrainer ? 'Edit Trainer' : 'Add New Trainer'}
+            </h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -560,23 +585,42 @@ const TrainerManagement = () => {
                   name="email"
                   value={newTrainer.email}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={editingTrainer} // Don't allow email change for existing trainers
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
                   placeholder="Enter trainer's email"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
-                </label>
-                <input
-                  type="text"
-                  name="password"
-                  value={newTrainer.password}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter password"
-                />
-              </div>
+              {!editingTrainer && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Password
+                    </label>
+                    <input
+                      type="text"
+                      name="password"
+                      value={newTrainer.password}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Trial Days
+                    </label>
+                    <input
+                      type="number"
+                      name="trial_days"
+                      value={newTrainer.trial_days}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      min="1"
+                      max="365"
+                    />
+                  </div>
+                </>
+              )}
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   onClick={() => setShowModal(false)}
@@ -585,13 +629,18 @@ const TrainerManagement = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={handleAddTrainer}
+                  onClick={handleSubmitTrainer}
                   disabled={processingAction === 'new'}
                   className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 ${
                     processingAction === 'new' ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
-                  {processingAction === 'new' ? 'Adding...' : 'Add Trainer'}
+                  {processingAction === 'new' 
+                    ? 'Saving...' 
+                    : editingTrainer 
+                      ? 'Update Trainer' 
+                      : 'Add Trainer'
+                  }
                 </button>
               </div>
             </div>

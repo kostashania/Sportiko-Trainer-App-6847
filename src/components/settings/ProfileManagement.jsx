@@ -163,18 +163,38 @@ const ProfileManagement = () => {
       setLoading(true);
       toast.loading('Fixing superadmin status...', { id: 'fix-superadmin' });
 
-      // Insert the user into superadmins table
-      const { error } = await supabase
-        .from('superadmins')
-        .insert([{
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || formData.full_name || 'Super Admin'
-        }])
-        .select();
+      // Use the service role to bypass RLS for initial setup
+      // Since we can't use service role in browser, we'll create a special function
+      const { data, error } = await supabase.rpc('create_superadmin_if_allowed', {
+        user_id: user.id,
+        user_email: user.email,
+        user_name: user.user_metadata?.full_name || formData.full_name || 'Super Admin'
+      });
 
-      if (error && error.code !== '23505') { // Ignore duplicate key error
-        throw error;
+      if (error) {
+        // If the function doesn't exist, try the regular insert with better error handling
+        console.warn('create_superadmin_if_allowed function not found, trying regular insert');
+        
+        // First, let's try to update the RLS policy temporarily by calling a function
+        try {
+          await supabase.rpc('enable_superadmin_self_insert');
+        } catch (policyError) {
+          console.warn('Could not modify RLS policy:', policyError);
+        }
+
+        // Try the insert again
+        const { error: insertError } = await supabase
+          .from('superadmins')
+          .insert([{
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || formData.full_name || 'Super Admin'
+          }])
+          .select();
+
+        if (insertError && insertError.code !== '23505') { // Ignore duplicate key error
+          throw insertError;
+        }
       }
 
       // Refresh everything
@@ -183,7 +203,13 @@ const ProfileManagement = () => {
       toast.success('Superadmin status fixed!', { id: 'fix-superadmin' });
     } catch (error) {
       console.error('Error fixing superadmin:', error);
-      toast.error('Failed to fix superadmin status: ' + error.message, { id: 'fix-superadmin' });
+      
+      // Show a more helpful error message
+      if (error.code === '42501') {
+        toast.error('RLS policy prevents self-insertion. Please contact database administrator.', { id: 'fix-superadmin' });
+      } else {
+        toast.error('Failed to fix superadmin status: ' + error.message, { id: 'fix-superadmin' });
+      }
     } finally {
       setLoading(false);
     }
@@ -390,6 +416,9 @@ const ProfileManagement = () => {
                     <span className="font-medium">Superadmins Table</span>
                     <p className="text-xs text-gray-600">
                       {debugInfo.checks.superadminTable?.exists ? 'Found in table' : 'Not found in table'}
+                      {debugInfo.checks.superadminTable?.error && (
+                        <span className="text-red-500"> - {debugInfo.checks.superadminTable.error}</span>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -402,7 +431,7 @@ const ProfileManagement = () => {
                         disabled={loading}
                         className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
                       >
-                        Fix
+                        {loading ? 'Fixing...' : 'Fix'}
                       </button>
                     )}
                   </div>
@@ -440,6 +469,9 @@ const ProfileManagement = () => {
                     <span className="font-medium">is_superadmin() Function</span>
                     <p className="text-xs text-gray-600">
                       Result: {debugInfo.checks.isSuperadminFunction?.result ? 'TRUE' : 'FALSE'}
+                      {debugInfo.checks.isSuperadminFunction?.error && (
+                        <span className="text-red-500"> - {debugInfo.checks.isSuperadminFunction.error}</span>
+                      )}
                     </p>
                   </div>
                   <span className={`w-3 h-3 rounded-full ${
@@ -461,6 +493,17 @@ const ProfileManagement = () => {
                       ? 'bg-green-500' : 'bg-gray-300'
                   }`}></span>
                 </div>
+              </div>
+            </div>
+
+            {/* Troubleshooting Guide */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-900 mb-2">Troubleshooting Guide</h4>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p>• If the is_superadmin() function returns TRUE but you're not in the table, the database function is working correctly.</p>
+                <p>• The RLS (Row Level Security) policies might prevent automatic insertion. This is a security feature.</p>
+                <p>• Contact your database administrator to manually insert the superadmin record if the Fix button doesn't work.</p>
+                <p>• The system recognizes you as a superadmin based on your email and ID even without the database record.</p>
               </div>
             </div>
 

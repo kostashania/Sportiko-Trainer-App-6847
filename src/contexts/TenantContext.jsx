@@ -20,38 +20,45 @@ export const TenantProvider = ({ children }) => {
 
   useEffect(() => {
     if (user && profile) {
-      // For demo trainer user
-      if (user.id === REAL_USERS.TRAINER) {
-        const schema = getTenantSchema(user.id);
-        setTenantSchema(schema);
-        setTenantReady(true);
-        return;
-      }
-      
-      // For real trainers
-      if (profile.role === 'trainer') {
-        const schema = getTenantSchema(user.id);
-        setTenantSchema(schema);
-        setTenantReady(true);
-        return;
-      }
-      
-      // For players, use their trainer's schema
-      if (profile.role === 'player' && profile.trainer_id) {
-        const schema = getTenantSchema(profile.trainer_id);
-        setTenantSchema(schema);
-        setTenantReady(true);
-        return;
-      }
-      
-      // For superadmins, no specific tenant schema is needed
+      console.log('🏗️ Setting up tenant context for:', profile.role, user.email);
+
+      // For superadmins, no specific tenant schema is needed but mark as ready
       if (profile.role === 'superadmin') {
+        console.log('👑 Superadmin detected - no tenant schema needed');
         setTenantSchema(null);
         setTenantReady(true);
         return;
       }
-      
+
+      // For demo trainer user
+      if (user.id === REAL_USERS.TRAINER) {
+        const schema = getTenantSchema(user.id);
+        console.log('📱 Demo trainer detected, schema:', schema);
+        setTenantSchema(schema);
+        setTenantReady(true);
+        return;
+      }
+
+      // For real trainers
+      if (profile.role === 'trainer') {
+        const schema = getTenantSchema(user.id);
+        console.log('🏃 Real trainer detected, schema:', schema);
+        setTenantSchema(schema);
+        setTenantReady(true);
+        return;
+      }
+
+      // For players, use their trainer's schema
+      if (profile.role === 'player' && profile.trainer_id) {
+        const schema = getTenantSchema(profile.trainer_id);
+        console.log('🏃‍♂️ Player detected, using trainer schema:', schema);
+        setTenantSchema(schema);
+        setTenantReady(true);
+        return;
+      }
+
       // Default case - no schema available
+      console.log('❌ No tenant schema available for role:', profile.role);
       setTenantSchema(null);
       setTenantReady(false);
     } else {
@@ -62,10 +69,17 @@ export const TenantProvider = ({ children }) => {
 
   // Helper function to query tenant-specific tables
   const queryTenantTable = (tableName) => {
+    // For superadmins querying tenant tables, return mock functions
+    if (profile?.role === 'superadmin') {
+      console.log('👑 Superadmin querying tenant table:', tableName, '- returning mock data');
+      return getMockTableFunctions(tableName);
+    }
+
     if (!tenantSchema) {
+      console.error('❌ Tenant schema not available for table:', tableName);
       throw new Error('Tenant schema not available');
     }
-    
+
     // For demo trainer user
     if (user?.id === REAL_USERS.TRAINER) {
       // Try to use real DB first
@@ -74,12 +88,11 @@ export const TenantProvider = ({ children }) => {
       } catch (error) {
         console.error(`Error querying ${tenantSchema}.${tableName}:`, error);
         toast.error(`Could not access ${tableName}. Schema may not exist.`);
-        
         // Return mock functions to prevent app crashes
         return getMockTableFunctions(tableName);
       }
     }
-    
+
     // For real users, use Supabase
     try {
       return supabase.from(`${tenantSchema}.${tableName}`);
@@ -104,12 +117,11 @@ export const TenantProvider = ({ children }) => {
     if (!user) {
       throw new Error('User not authenticated');
     }
-    
+
     try {
       return supabase.storage.from(`trainer-${user.id}`);
     } catch (error) {
       console.error(`Error accessing storage for trainer-${user.id}:`, error);
-      
       // Return mock storage functions
       return {
         upload: () => Promise.resolve({ data: { path: 'demo/file.jpg' }, error: null }),
@@ -123,28 +135,50 @@ export const TenantProvider = ({ children }) => {
   // Function to get mock table functions
   const getMockTableFunctions = (tableName) => {
     return {
-      select: () => ({
-        order: () => Promise.resolve({ data: getMockData(tableName), error: null }),
-        eq: () => ({
-          select: () => Promise.resolve({ data: getMockData(tableName)[0], error: null })
+      select: (columns = '*') => ({
+        order: (column, options = {}) => Promise.resolve({ data: getMockData(tableName), error: null }),
+        eq: (column, value) => ({
+          select: (cols = '*') => Promise.resolve({ data: getMockData(tableName)[0], error: null }),
+          single: () => Promise.resolve({ data: getMockData(tableName)[0], error: null })
         }),
-        gte: () => Promise.resolve({ data: getMockData(tableName), error: null }),
-        delete: () => ({
-          eq: () => Promise.resolve({ error: null })
+        gte: (column, value) => Promise.resolve({ data: getMockData(tableName), error: null }),
+        lte: (column, value) => Promise.resolve({ data: getMockData(tableName), error: null }),
+        limit: (count) => Promise.resolve({ data: getMockData(tableName).slice(0, count), error: null })
+      }),
+      delete: () => ({
+        eq: (column, value) => Promise.resolve({ error: null })
+      }),
+      update: (data) => ({
+        eq: (column, value) => ({
+          select: (cols = '*') => Promise.resolve({ data: { ...getMockData(tableName)[0], ...data }, error: null })
+        })
+      }),
+      insert: (data) => ({
+        select: (cols = '*') => Promise.resolve({ 
+          data: Array.isArray(data) ? data.map((item, index) => ({ 
+            id: `mock-${Date.now()}-${index}`, 
+            ...item,
+            created_at: new Date().toISOString()
+          })) : [{ 
+            id: `mock-${Date.now()}`, 
+            ...data,
+            created_at: new Date().toISOString()
+          }], 
+          error: null 
         }),
-        update: () => ({
-          eq: () => ({
-            select: () => Promise.resolve({ data: getMockData(tableName)[0], error: null })
-          })
-        }),
-        insert: () => ({
-          select: () => Promise.resolve({ data: getMockData(tableName)[0], error: null })
+        single: () => Promise.resolve({ 
+          data: { 
+            id: `mock-${Date.now()}`, 
+            ...data,
+            created_at: new Date().toISOString()
+          }, 
+          error: null 
         })
       })
     };
   };
 
-  // Mock data for demo users
+  // Mock data for demo users and superadmins
   const getMockData = (tableName) => {
     const mockData = {
       players: [
@@ -215,7 +249,7 @@ export const TenantProvider = ({ children }) => {
         }
       ]
     };
-    
+
     return mockData[tableName] || [];
   };
 

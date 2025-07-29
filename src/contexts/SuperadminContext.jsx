@@ -29,6 +29,8 @@ export const SuperadminProvider = ({ children }) => {
 
   const checkSuperadminStatus = async () => {
     try {
+      setLoading(true);
+      
       // Check if this is a demo user
       if (user && demoAuth.isDemoUser(user.email)) {
         const demoProfile = demoAuth.getDemoUser(user.email);
@@ -51,6 +53,13 @@ export const SuperadminProvider = ({ children }) => {
         return;
       }
 
+      // Special case for our hardcoded superadmin
+      if (user.email === 'superadmin_pt@sportiko.eu') {
+        setIsSuperadmin(true);
+        setLoading(false);
+        return;
+      }
+
       // Check if user exists in superadmins table
       const { data, error } = await supabase
         .from('superadmins')
@@ -59,6 +68,7 @@ export const SuperadminProvider = ({ children }) => {
         .single();
 
       if (error && error.code !== 'PGRST116') {
+        console.log('Error checking superadmin status:', error);
         throw error;
       }
 

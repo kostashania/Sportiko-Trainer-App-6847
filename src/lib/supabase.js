@@ -17,9 +17,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: true
   },
   global: {
-    headers: {
-      'X-Client-Info': 'sportiko-trainer@1.0.0'
-    }
+    headers: {'X-Client-Info': 'sportiko-trainer@1.0.0'}
   }
 });
 
@@ -29,6 +27,7 @@ export const supabaseAdmin = null;
 // Connection status checker
 export const checkSupabaseConnection = async () => {
   try {
+    // Use a simple query to check connection
     const { data, error } = await supabase
       .from('trainers')
       .select('count')
@@ -38,7 +37,6 @@ export const checkSupabaseConnection = async () => {
       console.error('Supabase connection error:', error);
       return { connected: false, error: error.message };
     }
-
     return { connected: true, error: null };
   } catch (error) {
     console.error('Supabase connection check failed:', error);
@@ -138,17 +136,17 @@ export const demoAuth = {
 export const createTenantSchema = async (trainerId) => {
   try {
     console.log('Creating tenant schema for trainer:', trainerId);
-
+    
     // Use the database function that should be available to authenticated users
     const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
     });
-
+    
     if (error) {
       console.error('Error calling create_basic_tenant_schema:', error);
       throw error;
     }
-
+    
     console.log('Schema created successfully:', data);
     return true;
   } catch (error) {
@@ -180,12 +178,13 @@ export const dbConfig = {
       if (!stored) return null;
 
       const config = JSON.parse(stored);
+      
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem('sportiko_db_config');
         return null;
       }
-
+      
       return config;
     } catch (error) {
       console.error('Error retrieving DB config:', error);

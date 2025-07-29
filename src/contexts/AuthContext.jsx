@@ -24,6 +24,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const parsedUser = JSON.parse(demoUser);
         setUser(parsedUser);
+        
         // Get the full profile for the demo user
         const demoProfile = demoAuth.getDemoUser(parsedUser.email);
         if (demoProfile) {
@@ -81,56 +82,80 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      // Try to fetch from actual Supabase - first check if user is a superadmin
-      const { data: adminData, error: adminError } = await supabase
-        .from('superadmins')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (!adminError) {
+      // Special case for superadmin
+      if (user.email === 'superadmin_pt@sportiko.eu') {
         setProfile({
-          ...adminData,
-          role: 'superadmin',
-          full_name: adminData.full_name || user.user_metadata?.full_name || 'Super Admin'
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || 'Super Admin',
+          role: 'superadmin'
         });
         return;
+      }
+
+      // Try to fetch from actual Supabase - first check if user is a superadmin
+      try {
+        const { data: adminData, error: adminError } = await supabase
+          .from('superadmins')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (!adminError && adminData) {
+          setProfile({
+            ...adminData,
+            role: 'superadmin',
+            full_name: adminData.full_name || user.user_metadata?.full_name || 'Super Admin'
+          });
+          return;
+        }
+      } catch (adminError) {
+        console.error('Error checking superadmin:', adminError);
       }
 
       // Check if user is a trainer
-      const { data: trainerData, error: trainerError } = await supabase
-        .from('trainers')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+      try {
+        const { data: trainerData, error: trainerError } = await supabase
+          .from('trainers')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-      if (!trainerError) {
-        setProfile({
-          ...trainerData,
-          role: 'trainer',
-          full_name: trainerData.full_name || user.user_metadata?.full_name || 'Trainer'
-        });
-        return;
+        if (!trainerError && trainerData) {
+          setProfile({
+            ...trainerData,
+            role: 'trainer',
+            full_name: trainerData.full_name || user.user_metadata?.full_name || 'Trainer'
+          });
+          return;
+        }
+      } catch (trainerError) {
+        console.error('Error checking trainer:', trainerError);
       }
 
       // Check if user is a player (in players_auth table)
-      const { data: playerData, error: playerError } = await supabase
-        .from('players_auth')
-        .select('*, trainers:trainer_id(*)')
-        .eq('id', user.id)
-        .single();
+      try {
+        const { data: playerData, error: playerError } = await supabase
+          .from('players_auth')
+          .select('*,trainers:trainer_id(*)')
+          .eq('id', user.id)
+          .single();
 
-      if (!playerError) {
-        setProfile({
-          ...playerData,
-          role: 'player',
-          full_name: user.user_metadata?.full_name || 'Player',
-          trainer_id: playerData.trainer_id
-        });
-        return;
+        if (!playerError && playerData) {
+          setProfile({
+            ...playerData,
+            role: 'player',
+            full_name: user.user_metadata?.full_name || 'Player',
+            trainer_id: playerData.trainer_id
+          });
+          return;
+        }
+      } catch (playerError) {
+        console.error('Error checking player:', playerError);
       }
 
-      console.error('No profile found for user:', user.email);
+      console.warn('No profile found for user:', user.email);
+      
       // Create a fallback profile with basic information
       setProfile({
         id: user.id,
@@ -141,6 +166,7 @@ export const AuthProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('Error fetching profile:', error);
+      
       // Create a fallback profile with basic information
       if (user) {
         setProfile({
@@ -204,12 +230,13 @@ export const AuthProvider = ({ children }) => {
       // Otherwise use Supabase signOut
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-
+      
       setUser(null);
       setProfile(null);
       return { error: null };
     } catch (error) {
       console.error('Sign out error:', error);
+      
       // Even if there's an error, clear the local state
       localStorage.removeItem('sportiko_user');
       setUser(null);
@@ -230,9 +257,7 @@ export const AuthProvider = ({ children }) => {
         email,
         password,
         options: {
-          data: {
-            full_name: fullName
-          }
+          data: { full_name: fullName }
         }
       });
 
@@ -240,18 +265,24 @@ export const AuthProvider = ({ children }) => {
 
       if (data.user) {
         // Create trainer profile
-        const { error: profileError } = await supabase
-          .from('trainers')
-          .insert([
-            {
-              id: data.user.id,
-              email: data.user.email,
-              full_name: fullName,
-              trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-            }
-          ]);
+        try {
+          const { error: profileError } = await supabase
+            .from('trainers')
+            .insert([
+              {
+                id: data.user.id,
+                email: data.user.email,
+                full_name: fullName,
+                trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+              }
+            ]);
 
-        if (profileError) throw profileError;
+          if (profileError) {
+            console.warn('Error creating trainer profile:', profileError);
+          }
+        } catch (profileError) {
+          console.error('Exception creating trainer profile:', profileError);
+        }
       }
 
       return { data, error: null };

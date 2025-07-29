@@ -32,19 +32,28 @@ const TrainerManagement = () => {
       setLoading(true);
       console.log('Loading trainers...');
       
+      // First check if the trainers table exists
+      const { data: tableExists, error: tableError } = await supabase
+        .from('trainers')
+        .select('count(*)', { count: 'exact', head: true });
+      
+      if (tableError) {
+        console.error('Error checking trainers table:', tableError);
+        throw tableError;
+      }
+      
+      console.log('Trainers table exists, fetching data...');
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false });
-
-      console.log('Trainers data:', data);
-      console.log('Trainers error:', error);
 
       if (error) {
         console.error('Error loading trainers:', error);
         throw error;
       }
 
+      console.log('Trainers data loaded:', data?.length || 0, 'records');
       setTrainers(data || []);
     } catch (error) {
       console.error('Error loading trainers:', error);
@@ -111,46 +120,34 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
-
-      // Use the improved schema creation function
-      const { data, error } = await supabase.rpc('create_trainer_schema_safe', {
+      
+      // Use the improved schema creation function with error handling
+      const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
         trainer_id: trainerId
       });
 
       if (error) {
         console.error('Error creating tenant schema:', error);
         
-        // If the function doesn't exist, try the basic one
-        if (error.code === '42883') {
-          const { data: basicData, error: basicError } = await supabase.rpc('create_basic_tenant_schema', {
-            trainer_id: trainerId
-          });
-          
-          if (basicError) {
-            // Handle policy already exists error
-            if (basicError.code === '42710') {
-              toast.success('Schema already exists for this trainer', { id: 'create-schema' });
-              return;
-            }
-            throw basicError;
-          }
-        } else {
-          throw error;
+        // Check if policy already exists error
+        if (error.code === '42710') {
+          toast.success('Schema already exists for this trainer', { id: 'create-schema' });
+          return;
         }
+        
+        // Check if schema already exists
+        if (error.code === '42P06') {
+          toast.success('Schema already exists', { id: 'create-schema' });
+          return;
+        }
+        
+        throw error;
       }
 
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
     } catch (error) {
       console.error('Error creating tenant schema:', error);
-      
-      // Handle specific error cases
-      if (error.code === '42710') {
-        toast.success('Schema already exists for this trainer', { id: 'create-schema' });
-      } else if (error.code === '42P06') {
-        toast.success('Schema already exists', { id: 'create-schema' });
-      } else {
-        toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
-      }
+      toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
     } finally {
       setProcessingAction(null);
     }
@@ -240,28 +237,8 @@ const TrainerManagement = () => {
         const newTrialEnd = new Date();
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
-        // Try to create trainer record directly
-        const { data: trainerData, error: trainerError } = await supabase
-          .from('trainers')
-          .insert([{
-            id: newTrainerId,
-            email: newTrainer.email,
-            full_name: newTrainer.full_name,
-            trial_end: newTrialEnd.toISOString(),
-            is_active: true
-          }])
-          .select()
-          .single();
-
-        if (trainerError) {
-          console.error('Trainer creation error:', trainerError);
-          throw trainerError;
-        }
-
-        console.log('Trainer created:', trainerData);
-
-        // Try to create the auth user (this might fail if user exists)
         try {
+          // First create auth user - this will likely fail if user exists
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: newTrainer.email,
             password: newTrainer.password,
@@ -272,26 +249,72 @@ const TrainerManagement = () => {
             }
           });
 
-          if (signUpError && !signUpError.message.includes('already been registered')) {
-            console.warn('Auth signup failed:', signUpError);
-            // Continue anyway - the trainer record was created
+          if (signUpError) {
+            // Check if user already exists
+            if (signUpError.message.includes('already been registered')) {
+              console.log('User already registered, continuing with trainer creation');
+              // Continue with trainer creation even if auth user exists
+            } else {
+              console.error('Auth signup failed:', signUpError);
+              throw signUpError;
+            }
           }
 
-          console.log('Auth signup result:', signUpData);
-        } catch (authError) {
-          console.warn('Auth error (continuing anyway):', authError);
-        }
+          // Get the user ID - either from signup or try to get from existing user
+          let userId = signUpData?.user?.id;
+          
+          // If we couldn't get user ID (likely because user already exists)
+          if (!userId) {
+            // Try to get the user ID for the email
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('id')
+              .eq('email', newTrainer.email)
+              .single();
+              
+            if (!userError && userData) {
+              userId = userData.id;
+            } else {
+              // Use the generated ID as fallback
+              userId = newTrainerId;
+            }
+          }
 
-        // Add to local state
-        setTrainers([trainerData, ...trainers]);
+          // Create trainer record
+          const { data: trainerData, error: trainerError } = await supabase
+            .from('trainers')
+            .insert([{
+              id: userId,
+              email: newTrainer.email,
+              full_name: newTrainer.full_name,
+              trial_end: newTrialEnd.toISOString(),
+              is_active: true
+            }])
+            .select()
+            .single();
 
-        // Try to create tenant schema automatically
-        try {
-          await createTenantSchemaForTrainer(newTrainerId);
-          toast.success('Trainer and schema created successfully!');
-        } catch (schemaError) {
-          console.error('Schema creation failed:', schemaError);
-          toast.success('Trainer created successfully (schema creation pending)');
+          if (trainerError) {
+            console.error('Trainer creation error:', trainerError);
+            throw trainerError;
+          }
+
+          console.log('Trainer created:', trainerData);
+
+          // Add to local state
+          setTrainers([trainerData, ...trainers]);
+
+          // Try to create tenant schema automatically
+          try {
+            await createTenantSchemaForTrainer(trainerData.id);
+            toast.success('Trainer and schema created successfully!');
+          } catch (schemaError) {
+            console.error('Schema creation failed:', schemaError);
+            toast.success('Trainer created successfully (schema creation pending)');
+          }
+
+        } catch (error) {
+          console.error('Error creating trainer:', error);
+          throw error;
         }
       }
 

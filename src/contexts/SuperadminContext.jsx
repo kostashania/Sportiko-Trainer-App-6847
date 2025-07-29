@@ -31,9 +31,12 @@ export const SuperadminProvider = ({ children }) => {
     try {
       setLoading(true);
       
+      console.log('🔍 Checking superadmin status for:', user?.email, user?.id);
+
       // Check if this is a demo user
       if (user && demoAuth.isDemoUser(user.email)) {
         const demoProfile = demoAuth.getDemoUser(user.email);
+        console.log('📱 Demo user detected:', demoProfile);
         setIsSuperadmin(demoProfile.role === 'superadmin');
         setLoading(false);
         return;
@@ -41,6 +44,7 @@ export const SuperadminProvider = ({ children }) => {
 
       // Check profile directly if available
       if (profile) {
+        console.log('👤 Profile available:', profile.role);
         setIsSuperadmin(profile.role === 'superadmin');
         setLoading(false);
         return;
@@ -48,19 +52,22 @@ export const SuperadminProvider = ({ children }) => {
 
       // Safety check to prevent errors when user is null
       if (!user || !user.id) {
+        console.log('❌ No user or user ID');
         setIsSuperadmin(false);
         setLoading(false);
         return;
       }
 
       // Special case for our hardcoded superadmin
-      if (user.email === 'superadmin_pt@sportiko.eu') {
+      if (user.email === 'superadmin_pt@sportiko.eu' || user.id === 'be9c6165-808a-4335-b90e-22f6d20328bf') {
+        console.log('✅ Hardcoded superadmin detected');
         setIsSuperadmin(true);
         setLoading(false);
         return;
       }
 
       // Check if user exists in superadmins table
+      console.log('🔍 Checking superadmins table...');
       const { data, error } = await supabase
         .from('superadmins')
         .select('id')
@@ -68,13 +75,40 @@ export const SuperadminProvider = ({ children }) => {
         .single();
 
       if (error && error.code !== 'PGRST116') {
-        console.log('Error checking superadmin status:', error);
-        throw error;
+        console.error('❌ Error checking superadmin status:', error);
+        // Don't throw, just log and continue
       }
 
-      setIsSuperadmin(!!data);
+      const isSuper = !!data;
+      console.log('🎯 Superadmin check result:', isSuper, data);
+      setIsSuperadmin(isSuper);
+
+      // If not found and this looks like a superadmin email, try to create the record
+      if (!isSuper && user.email === 'superadmin_pt@sportiko.eu') {
+        console.log('🔧 Attempting to create superadmin record...');
+        try {
+          const { error: insertError } = await supabase
+            .from('superadmins')
+            .insert([{
+              id: user.id,
+              email: user.email,
+              full_name: user.user_metadata?.full_name || 'Super Admin'
+            }]);
+
+          if (!insertError) {
+            console.log('✅ Superadmin record created successfully');
+            setIsSuperadmin(true);
+            toast.success('Superadmin access granted!');
+          } else {
+            console.error('❌ Failed to create superadmin record:', insertError);
+          }
+        } catch (createError) {
+          console.error('❌ Exception creating superadmin record:', createError);
+        }
+      }
+
     } catch (error) {
-      console.error('Error checking superadmin status:', error);
+      console.error('❌ Exception in checkSuperadminStatus:', error);
       setIsSuperadmin(false);
     } finally {
       setLoading(false);

@@ -73,17 +73,21 @@ export const AuthProvider = ({ children }) => {
 
   const fetchProfile = async (user) => {
     try {
+      console.log('🔍 Fetching profile for user:', user.email, user.id);
+
       // For demo users, use the demo profile
       if (demoAuth.isDemoUser(user.email)) {
         const demoProfile = demoAuth.getDemoUser(user.email);
         if (demoProfile) {
+          console.log('📱 Using demo profile:', demoProfile);
           setProfile(demoProfile);
           return;
         }
       }
 
-      // Special case for superadmin
+      // Special case for superadmin - check by email first
       if (user.email === 'superadmin_pt@sportiko.eu') {
+        console.log('👑 Superadmin email detected');
         setProfile({
           id: user.id,
           email: user.email,
@@ -95,6 +99,7 @@ export const AuthProvider = ({ children }) => {
 
       // Try to fetch from actual Supabase - first check if user is a superadmin
       try {
+        console.log('🔍 Checking superadmins table...');
         const { data: adminData, error: adminError } = await supabase
           .from('superadmins')
           .select('*')
@@ -102,19 +107,23 @@ export const AuthProvider = ({ children }) => {
           .single();
 
         if (!adminError && adminData) {
+          console.log('👑 Found in superadmins table:', adminData);
           setProfile({
             ...adminData,
             role: 'superadmin',
             full_name: adminData.full_name || user.user_metadata?.full_name || 'Super Admin'
           });
           return;
+        } else {
+          console.log('❌ Not found in superadmins table:', adminError?.message);
         }
       } catch (adminError) {
-        console.error('Error checking superadmin:', adminError);
+        console.error('❌ Error checking superadmin:', adminError);
       }
 
       // Check if user is a trainer
       try {
+        console.log('🔍 Checking trainers table...');
         const { data: trainerData, error: trainerError } = await supabase
           .from('trainers')
           .select('*')
@@ -122,19 +131,23 @@ export const AuthProvider = ({ children }) => {
           .single();
 
         if (!trainerError && trainerData) {
+          console.log('🏃 Found in trainers table:', trainerData);
           setProfile({
             ...trainerData,
             role: 'trainer',
             full_name: trainerData.full_name || user.user_metadata?.full_name || 'Trainer'
           });
           return;
+        } else {
+          console.log('❌ Not found in trainers table:', trainerError?.message);
         }
       } catch (trainerError) {
-        console.error('Error checking trainer:', trainerError);
+        console.error('❌ Error checking trainer:', trainerError);
       }
 
       // Check if user is a player (in players_auth table)
       try {
+        console.log('🔍 Checking players_auth table...');
         const { data: playerData, error: playerError } = await supabase
           .from('players_auth')
           .select('*,trainers:trainer_id(*)')
@@ -142,6 +155,7 @@ export const AuthProvider = ({ children }) => {
           .single();
 
         if (!playerError && playerData) {
+          console.log('🏃‍♂️ Found in players_auth table:', playerData);
           setProfile({
             ...playerData,
             role: 'player',
@@ -149,12 +163,14 @@ export const AuthProvider = ({ children }) => {
             trainer_id: playerData.trainer_id
           });
           return;
+        } else {
+          console.log('❌ Not found in players_auth table:', playerError?.message);
         }
       } catch (playerError) {
-        console.error('Error checking player:', playerError);
+        console.error('❌ Error checking player:', playerError);
       }
 
-      console.warn('No profile found for user:', user.email);
+      console.warn('⚠️ No profile found for user:', user.email);
       
       // Create a fallback profile with basic information
       setProfile({
@@ -165,7 +181,7 @@ export const AuthProvider = ({ children }) => {
         trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
       });
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('❌ Error fetching profile:', error);
       
       // Create a fallback profile with basic information
       if (user) {

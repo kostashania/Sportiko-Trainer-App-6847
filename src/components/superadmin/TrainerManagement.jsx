@@ -17,7 +17,7 @@ const TrainerManagement = () => {
   const [newTrainer, setNewTrainer] = useState({
     email: '',
     full_name: '',
-    password: 'pass123', // Default password
+    password: 'pass123',
     subscription_plan: 'trial',
     trial_days: 14
   });
@@ -30,16 +30,25 @@ const TrainerManagement = () => {
   const loadTrainers = async () => {
     try {
       setLoading(true);
+      console.log('Loading trainers...');
+      
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      console.log('Trainers data:', data);
+      console.log('Trainers error:', error);
+
+      if (error) {
+        console.error('Error loading trainers:', error);
+        throw error;
+      }
+
       setTrainers(data || []);
     } catch (error) {
       console.error('Error loading trainers:', error);
-      toast.error('Failed to load trainers');
+      toast.error('Failed to load trainers: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -103,19 +112,45 @@ const TrainerManagement = () => {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
 
-      const { error } = await supabase.rpc('create_basic_tenant_schema', {
+      // Use the improved schema creation function
+      const { data, error } = await supabase.rpc('create_trainer_schema_safe', {
         trainer_id: trainerId
       });
 
       if (error) {
         console.error('Error creating tenant schema:', error);
-        throw error;
+        
+        // If the function doesn't exist, try the basic one
+        if (error.code === '42883') {
+          const { data: basicData, error: basicError } = await supabase.rpc('create_basic_tenant_schema', {
+            trainer_id: trainerId
+          });
+          
+          if (basicError) {
+            // Handle policy already exists error
+            if (basicError.code === '42710') {
+              toast.success('Schema already exists for this trainer', { id: 'create-schema' });
+              return;
+            }
+            throw basicError;
+          }
+        } else {
+          throw error;
+        }
       }
 
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
     } catch (error) {
       console.error('Error creating tenant schema:', error);
-      toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
+      
+      // Handle specific error cases
+      if (error.code === '42710') {
+        toast.success('Schema already exists for this trainer', { id: 'create-schema' });
+      } else if (error.code === '42P06') {
+        toast.success('Schema already exists', { id: 'create-schema' });
+      } else {
+        toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
+      }
     } finally {
       setProcessingAction(null);
     }
@@ -197,48 +232,19 @@ const TrainerManagement = () => {
         setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
         toast.success('Trainer updated successfully');
       } else {
-        // Create new trainer
-        // First create auth user
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: newTrainer.email,
-          password: newTrainer.password,
-          options: {
-            data: {
-              full_name: newTrainer.full_name
-            }
-          }
-        });
+        // Create new trainer - different approach
+        console.log('Creating new trainer:', newTrainer);
 
-        if (signUpError && !signUpError.message.includes('already been registered')) {
-          throw signUpError;
-        }
-
-        // Get user ID (either from signup or existing user)
-        let userId = signUpData.user?.id;
-        
-        if (!userId) {
-          // If signup failed due to existing user, try to get the user ID
-          const { data: existingUsers } = await supabase
-            .from('auth.users')
-            .select('id')
-            .eq('email', newTrainer.email)
-            .single();
-          
-          userId = existingUsers?.id;
-        }
-
-        if (!userId) {
-          throw new Error('Could not get user ID');
-        }
-
-        // Create trainer record
+        // Generate a UUID for the new trainer
+        const newTrainerId = crypto.randomUUID();
         const newTrialEnd = new Date();
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
+        // Try to create trainer record directly
         const { data: trainerData, error: trainerError } = await supabase
           .from('trainers')
           .insert([{
-            id: userId,
+            id: newTrainerId,
             email: newTrainer.email,
             full_name: newTrainer.full_name,
             trial_end: newTrialEnd.toISOString(),
@@ -248,37 +254,44 @@ const TrainerManagement = () => {
           .single();
 
         if (trainerError) {
-          // If trainer already exists, try to update
-          if (trainerError.code === '23505') {
-            const { data: updatedTrainer, error: updateError } = await supabase
-              .from('trainers')
-              .update({
-                full_name: newTrainer.full_name,
-                trial_end: newTrialEnd.toISOString(),
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', userId)
-              .select()
-              .single();
+          console.error('Trainer creation error:', trainerError);
+          throw trainerError;
+        }
 
-            if (updateError) throw updateError;
-            
-            setTrainers([updatedTrainer, ...trainers.filter(t => t.id !== userId)]);
-            toast.success('Trainer updated successfully');
-          } else {
-            throw trainerError;
+        console.log('Trainer created:', trainerData);
+
+        // Try to create the auth user (this might fail if user exists)
+        try {
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: newTrainer.email,
+            password: newTrainer.password,
+            options: {
+              data: {
+                full_name: newTrainer.full_name
+              }
+            }
+          });
+
+          if (signUpError && !signUpError.message.includes('already been registered')) {
+            console.warn('Auth signup failed:', signUpError);
+            // Continue anyway - the trainer record was created
           }
-        } else {
-          // Create tenant schema automatically
-          try {
-            await createTenantSchemaForTrainer(userId);
-            setTrainers([trainerData, ...trainers]);
-            toast.success('Trainer and schema created successfully!');
-          } catch (schemaError) {
-            console.error('Schema creation failed:', schemaError);
-            setTrainers([trainerData, ...trainers]);
-            toast.success('Trainer created successfully (schema creation pending)');
-          }
+
+          console.log('Auth signup result:', signUpData);
+        } catch (authError) {
+          console.warn('Auth error (continuing anyway):', authError);
+        }
+
+        // Add to local state
+        setTrainers([trainerData, ...trainers]);
+
+        // Try to create tenant schema automatically
+        try {
+          await createTenantSchemaForTrainer(newTrainerId);
+          toast.success('Trainer and schema created successfully!');
+        } catch (schemaError) {
+          console.error('Schema creation failed:', schemaError);
+          toast.success('Trainer created successfully (schema creation pending)');
         }
       }
 
@@ -290,6 +303,9 @@ const TrainerManagement = () => {
         subscription_plan: 'trial',
         trial_days: 14
       });
+
+      // Refresh the list
+      await loadTrainers();
     } catch (error) {
       console.error('Error saving trainer:', error);
       toast.error(error.message || 'Failed to save trainer');
@@ -410,149 +426,166 @@ const TrainerManagement = () => {
       {/* Trainers Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">All Trainers</h3>
+          <h3 className="text-lg font-medium text-gray-900">All Trainers ({filteredTrainers.length})</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Trainer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Trial Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Joined
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredTrainers.map((trainer) => {
-                const trialStatus = getTrialStatus(trainer.trial_end);
-                return (
-                  <motion.tr
-                    key={trainer.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          {trainer.avatar_url ? (
-                            <img
-                              src={trainer.avatar_url}
-                              alt={trainer.full_name}
-                              className="h-10 w-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center">
-                              <span className="text-white font-medium">
-                                {trainer.full_name?.charAt(0) || 'T'}
-                              </span>
+        
+        {filteredTrainers.length === 0 ? (
+          <div className="p-6 text-center">
+            <p className="text-gray-500 mb-4">No trainers found</p>
+            <button
+              onClick={handleAddTrainer}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center mx-auto"
+            >
+              <SafeIcon icon={FiPlus} className="w-5 h-5 mr-2" />
+              Add Your First Trainer
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Trainer
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Trial Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Joined
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredTrainers.map((trainer) => {
+                  const trialStatus = getTrialStatus(trainer.trial_end);
+                  return (
+                    <motion.tr
+                      key={trainer.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10">
+                            {trainer.avatar_url ? (
+                              <img
+                                src={trainer.avatar_url}
+                                alt={trainer.full_name}
+                                className="h-10 w-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center">
+                                <span className="text-white font-medium">
+                                  {trainer.full_name?.charAt(0) || 'T'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {trainer.full_name}
                             </div>
-                          )}
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {trainer.full_name}
+                            <div className="text-sm text-gray-500">
+                              ID: {trainer.id?.substring(0, 8)}...
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{trainer.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          trialStatus.status === 'active'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {trialStatus.status === 'active'
-                          ? `${trialStatus.daysLeft} days left`
-                          : 'Expired'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {trainer.created_at && format(new Date(trainer.created_at), 'MMM dd, yyyy')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          trainer.is_active !== false
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {trainer.is_active !== false ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleEditTrainer(trainer)}
-                          className="text-blue-600 hover:text-blue-900"
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{trainer.email}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            trialStatus.status === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}
                         >
-                          <SafeIcon icon={FiEdit} className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
-                          disabled={processingAction === trainer.id}
-                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                          {trialStatus.status === 'active'
+                            ? `${trialStatus.daysLeft} days left`
+                            : 'Expired'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {trainer.created_at ? format(new Date(trainer.created_at), 'MMM dd, yyyy') : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             trainer.is_active !== false
-                              ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                              : 'bg-green-100 text-green-700 hover:bg-green-200'
-                          } ${processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          {trainer.is_active !== false ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button
-                          onClick={() => extendTrial(trainer.id)}
-                          disabled={processingAction === trainer.id}
-                          className={`px-3 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-xs font-medium transition-colors ${
-                            processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
                           }`}
                         >
-                          Extend Trial
-                        </button>
-                        <button
-                          onClick={() => createTenantSchemaForTrainer(trainer.id)}
-                          disabled={processingAction === trainer.id}
-                          className={`px-3 py-1 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-lg text-xs font-medium transition-colors flex items-center ${
-                            processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                        >
-                          <SafeIcon icon={FiDatabase} className="w-3 h-3 mr-1" />
-                          Create Schema
-                        </button>
-                        <button
-                          onClick={() => handleDeleteTrainer(trainer.id)}
-                          disabled={processingAction === trainer.id}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          <SafeIcon icon={FiTrash2} className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          {trainer.is_active !== false ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleEditTrainer(trainer)}
+                            className="text-blue-600 hover:text-blue-900"
+                          >
+                            <SafeIcon icon={FiEdit} className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
+                            disabled={processingAction === trainer.id}
+                            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                              trainer.is_active !== false
+                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                            } ${processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {trainer.is_active !== false ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            onClick={() => extendTrial(trainer.id)}
+                            disabled={processingAction === trainer.id}
+                            className={`px-3 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-xs font-medium transition-colors ${
+                              processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            Extend Trial
+                          </button>
+                          <button
+                            onClick={() => createTenantSchemaForTrainer(trainer.id)}
+                            disabled={processingAction === trainer.id}
+                            className={`px-3 py-1 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-lg text-xs font-medium transition-colors flex items-center ${
+                              processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            <SafeIcon icon={FiDatabase} className="w-3 h-3 mr-1" />
+                            {processingAction === trainer.id ? 'Creating...' : 'Create Schema'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTrainer(trainer.id)}
+                            disabled={processingAction === trainer.id}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            <SafeIcon icon={FiTrash2} className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Add/Edit Trainer Modal */}

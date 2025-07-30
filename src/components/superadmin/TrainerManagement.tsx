@@ -54,6 +54,10 @@ export default function TrainerManagement() {
     queryKey: ['trainers'],
     queryFn: async () => {
       console.log('📋 Fetching trainers...')
+      
+      // Log the current table being used
+      console.log('🔍 Using table: public.trainers')
+      
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
@@ -65,12 +69,13 @@ export default function TrainerManagement() {
       }
 
       console.log('✅ Fetched trainers:', data?.length || 0)
+      console.log('📊 Sample trainer data:', data?.[0])
       setData(data || [])
       return data
     },
   })
 
-  // Delete trainer mutation - Fixed with proper logging
+  // Delete trainer mutation with enhanced logging
   const deleteTrainer = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
       console.log('🗑️ Deleting trainer:', id)
@@ -78,28 +83,70 @@ export default function TrainerManagement() {
       // Show loading toast
       toast.loading('Deleting trainer...', { id: 'delete-trainer' })
       
+      // Log the table being used for deletion
+      console.log('🔍 Deleting from table: public.trainers')
+      
+      // Check if trainer exists before deletion
+      console.log('🔍 Checking if trainer exists before deletion...')
+      const { data: checkData, error: checkError } = await supabase
+        .from('trainers')
+        .select('id, email')
+        .eq('id', id)
+        .single()
+        
+      if (checkError) {
+        console.error('❌ Error checking trainer existence:', checkError)
+        throw new Error(`Failed to verify trainer: ${checkError.message}`)
+      }
+      
+      console.log('✅ Trainer found before deletion:', checkData)
+      
       // Send DELETE request to Supabase
-      const { data, error } = await supabase
+      console.log('📡 Sending DELETE request to Supabase...')
+      const { data, error, status, statusText } = await supabase
         .from('trainers')
         .delete()
         .eq('id', id)
       
-      console.log('Delete response:', { data, error })
+      // Log complete response details
+      console.log('📡 DELETE Response:', { 
+        status,
+        statusText,
+        data, 
+        error,
+        success: !error,
+        timestamp: new Date().toISOString()
+      })
       
       if (error) {
         console.error('❌ Delete failed:', error)
         throw new Error(`Failed to delete trainer: ${error.message}`)
       }
       
+      // Verify deletion by checking if trainer still exists
+      console.log('🔍 Verifying deletion by checking if trainer still exists...')
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('trainers')
+        .select('id')
+        .eq('id', id)
+        .single()
+        
+      if (verifyError && verifyError.code === 'PGRST116') {
+        console.log('✅ Verification confirms trainer was deleted')
+      } else if (verifyData) {
+        console.error('❌ Verification failed: Trainer still exists after deletion', verifyData)
+        throw new Error('Trainer still exists after deletion attempt')
+      }
+      
       console.log('✅ Delete successful')
-      return id // Return the id for use in onSuccess
+      return id
     },
     onSuccess: (deletedId) => {
       // Only update UI after successful database deletion
       console.log('🔄 Updating UI after deletion:', deletedId)
       setData((prevData) => {
         const newData = prevData.filter((trainer) => trainer.id !== deletedId)
-        console.log(`UI updated: ${prevData.length} → ${newData.length} trainers`)
+        console.log(`📊 UI updated: ${prevData.length} → ${newData.length} trainers`)
         return newData
       })
       toast.success('Trainer deleted successfully', { id: 'delete-trainer' })
@@ -109,7 +156,7 @@ export default function TrainerManagement() {
     },
     onError: (error: Error) => {
       console.error('❌ Delete error:', error)
-      toast.error(error.message, { id: 'delete-trainer' })
+      toast.error(`Deletion failed: ${error.message}`, { id: 'delete-trainer' })
     }
   })
 
@@ -120,20 +167,31 @@ export default function TrainerManagement() {
       
       toast.loading('Updating trainer status...', { id: 'toggle-status' })
       
-      const { data, error } = await supabase
+      // Log the table being used for update
+      console.log('🔍 Updating table: public.trainers')
+      
+      const { data, error, status, statusText } = await supabase
         .from('trainers')
         .update({ is_active: !currentStatus })
         .eq('id', id)
         .select()
       
-      console.log('Toggle status response:', { data, error })
+      // Log complete response
+      console.log('📡 Toggle status response:', { 
+        status,
+        statusText,
+        data, 
+        error,
+        success: !error,
+        timestamp: new Date().toISOString()
+      })
       
       if (error) {
         console.error('❌ Toggle status failed:', error)
         throw error
       }
       
-      console.log('✅ Toggle status successful')
+      console.log('✅ Toggle status successful, updated data:', data)
       return { id, newStatus: !currentStatus }
     },
     onSuccess: ({ id, newStatus }) => {
@@ -154,12 +212,15 @@ export default function TrainerManagement() {
     },
   })
   
-  // Extend trial mutation
+  // Extend trial mutation with enhanced logging
   const extendTrial = useMutation({
     mutationFn: async ({ id, currentTrialEnd }: { id: string; currentTrialEnd: string | null }) => {
       console.log(`📅 Extending trial for trainer ${id}`, { currentTrialEnd })
       
       toast.loading('Extending trial period...', { id: 'extend-trial' })
+      
+      // Log the table being used for update
+      console.log('🔍 Updating table: public.trainers')
       
       // Calculate new trial end date (current + 14 days)
       const trialEnd = currentTrialEnd ? new Date(currentTrialEnd) : new Date()
@@ -173,20 +234,28 @@ export default function TrainerManagement() {
       })
       
       // Update the trial end date
-      const { data, error } = await supabase
+      const { data, error, status, statusText } = await supabase
         .from('trainers')
         .update({ trial_end: newTrialEnd.toISOString() })
         .eq('id', id)
         .select()
       
-      console.log('Extend trial response:', { data, error })
+      // Log complete response
+      console.log('📡 Extend trial response:', { 
+        status,
+        statusText,
+        data, 
+        error,
+        success: !error,
+        timestamp: new Date().toISOString()
+      })
       
       if (error) {
         console.error('❌ Extend trial failed:', error)
         throw error
       }
       
-      console.log('✅ Trial extended successfully')
+      console.log('✅ Trial extended successfully, updated data:', data)
       return { id, newTrialEnd: newTrialEnd.toISOString() }
     },
     onSuccess: ({ id, newTrialEnd }) => {
@@ -276,24 +345,26 @@ export default function TrainerManagement() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() =>
+                onClick={() => {
+                  console.log('👆 Toggle status clicked for:', row.original.id)
                   toggleTrainerStatus.mutate({
                     id: row.original.id,
                     currentStatus: row.original.is_active,
                   })
-                }
+                }}
                 disabled={isProcessing}
               >
                 {row.original.is_active ? 'Deactivate' : 'Activate'}
               </DropdownMenuItem>
               
               <DropdownMenuItem
-                onClick={() => 
+                onClick={() => {
+                  console.log('👆 Extend trial clicked for:', row.original.id)
                   extendTrial.mutate({
                     id: row.original.id,
                     currentTrialEnd: row.original.trial_end
                   })
-                }
+                }}
                 disabled={isProcessing}
               >
                 <Calendar className="h-4 w-4 mr-2" />
@@ -303,6 +374,7 @@ export default function TrainerManagement() {
               <DropdownMenuItem
                 className="text-red-600"
                 onClick={() => {
+                  console.log('👆 Delete clicked for:', row.original.id)
                   if (confirm('Are you sure you want to delete this trainer?')) {
                     deleteTrainer.mutate({ id: row.original.id })
                   }

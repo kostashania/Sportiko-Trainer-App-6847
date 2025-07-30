@@ -31,33 +31,19 @@ const TrainerManagement = () => {
     try {
       setLoading(true);
       console.log('Loading trainers...');
-      
-      // First check if the trainers table exists
-      const { data: tableExists, error: tableError } = await supabase
-        .from('trainers')
-        .select('count(*)', { count: 'exact', head: true });
-      
-      if (tableError) {
-        console.error('Error checking trainers table:', tableError);
-        throw tableError;
-      }
-      
-      console.log('Trainers table exists, fetching data...');
+
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error loading trainers:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       console.log('Trainers data loaded:', data?.length || 0, 'records');
       setTrainers(data || []);
     } catch (error) {
       console.error('Error loading trainers:', error);
-      toast.error('Failed to load trainers: ' + (error.message || 'Unknown error'));
+      toast.error('Failed to load trainers: ' + (error?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -120,7 +106,7 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
-      
+
       // Use the improved schema creation function with error handling
       const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
         trainer_id: trainerId
@@ -262,7 +248,7 @@ const TrainerManagement = () => {
 
           // Get the user ID - either from signup or try to get from existing user
           let userId = signUpData?.user?.id;
-          
+
           // If we couldn't get user ID (likely because user already exists)
           if (!userId) {
             // Try to get the user ID for the email
@@ -271,7 +257,7 @@ const TrainerManagement = () => {
               .select('id')
               .eq('email', newTrainer.email)
               .single();
-              
+
             if (!userError && userData) {
               userId = userData.id;
             } else {
@@ -344,6 +330,7 @@ const TrainerManagement = () => {
 
   const getTrialStatus = (trialEnd) => {
     if (!trialEnd) return { status: 'expired', daysLeft: 0 };
+    
     const endDate = new Date(trialEnd);
     const today = new Date();
     const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
@@ -451,7 +438,6 @@ const TrainerManagement = () => {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">All Trainers ({filteredTrainers.length})</h3>
         </div>
-        
         {filteredTrainers.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-gray-500 mb-4">No trainers found</p>
@@ -542,7 +528,9 @@ const TrainerManagement = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {trainer.created_at ? format(new Date(trainer.created_at), 'MMM dd, yyyy') : 'N/A'}
+                        {trainer.created_at
+                          ? format(new Date(trainer.created_at), 'MMM dd, yyyy')
+                          : 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
@@ -691,12 +679,11 @@ const TrainerManagement = () => {
                     processingAction === 'new' ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
-                  {processingAction === 'new' 
-                    ? 'Saving...' 
-                    : editingTrainer 
-                      ? 'Update Trainer' 
-                      : 'Add Trainer'
-                  }
+                  {processingAction === 'new'
+                    ? 'Saving...'
+                    : editingTrainer
+                    ? 'Update Trainer'
+                    : 'Add Trainer'}
                 </button>
               </div>
             </div>

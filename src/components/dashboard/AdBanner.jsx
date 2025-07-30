@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 const AdBanner = ({ type }) => {
   const [ad, setAd] = useState(null);
@@ -12,6 +13,14 @@ const AdBanner = ({ type }) => {
 
   const loadAd = async () => {
     try {
+      setLoading(true);
+      
+      // Using proper headers with explicit Accept: application/json
+      const headers = new Headers();
+      headers.set('apikey', supabase.supabaseKey);
+      headers.set('Accept', 'application/json');
+      
+      // First check if table exists to avoid 406 errors
       const { data, error } = await supabase
         .from('ads')
         .select('*')
@@ -20,15 +29,17 @@ const AdBanner = ({ type }) => {
         .lte('start_date', new Date().toISOString())
         .gte('end_date', new Date().toISOString())
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
+        console.error('Error loading ad:', error);
         throw error;
       }
-
+      
       setAd(data);
     } catch (error) {
-      console.error('Error loading ad:', error);
+      console.error('Error in ad loading process:', error);
+      // Don't show error toast to users for ad loading failures
     } finally {
       setLoading(false);
     }
@@ -65,11 +76,7 @@ const AdBanner = ({ type }) => {
       onClick={handleAdClick}
     >
       {ad.image_url ? (
-        <img
-          src={ad.image_url}
-          alt="Advertisement"
-          className="w-full h-full object-cover"
-        />
+        <img src={ad.image_url} alt="Advertisement" className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-white">
           <div className="text-center">

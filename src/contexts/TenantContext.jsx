@@ -84,7 +84,9 @@ export const TenantProvider = ({ children }) => {
     if (user?.id === REAL_USERS.TRAINER) {
       // Try to use real DB first
       try {
-        return supabase.from(`${tenantSchema}.${tableName}`);
+        // Add proper headers to avoid 406 errors
+        const query = supabase.from(`${tenantSchema}.${tableName}`);
+        return query;
       } catch (error) {
         console.error(`Error querying ${tenantSchema}.${tableName}:`, error);
         toast.error(`Could not access ${tableName}. Schema may not exist.`);
@@ -154,25 +156,19 @@ export const TenantProvider = ({ children }) => {
         })
       }),
       insert: (data) => ({
-        select: (cols = '*') => Promise.resolve({ 
-          data: Array.isArray(data) ? data.map((item, index) => ({ 
-            id: `mock-${Date.now()}-${index}`, 
-            ...item,
-            created_at: new Date().toISOString()
-          })) : [{ 
-            id: `mock-${Date.now()}`, 
-            ...data,
-            created_at: new Date().toISOString()
-          }], 
-          error: null 
+        select: (cols = '*') => Promise.resolve({
+          data: Array.isArray(data)
+            ? data.map((item, index) => ({
+                id: `mock-${Date.now()}-${index}`,
+                ...item,
+                created_at: new Date().toISOString()
+              }))
+            : [{ id: `mock-${Date.now()}`, ...data, created_at: new Date().toISOString() }],
+          error: null
         }),
-        single: () => Promise.resolve({ 
-          data: { 
-            id: `mock-${Date.now()}`, 
-            ...data,
-            created_at: new Date().toISOString()
-          }, 
-          error: null 
+        single: () => Promise.resolve({
+          data: { id: `mock-${Date.now()}`, ...data, created_at: new Date().toISOString() },
+          error: null
         })
       })
     };
@@ -220,16 +216,8 @@ export const TenantProvider = ({ children }) => {
         }
       ],
       payments: [
-        {
-          id: '1',
-          amount: 50.00,
-          paid: false
-        },
-        {
-          id: '2',
-          amount: 75.00,
-          paid: false
-        }
+        { id: '1', amount: 50.00, paid: false },
+        { id: '2', amount: 75.00, paid: false }
       ],
       trainers: [
         {

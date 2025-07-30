@@ -17,7 +17,10 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     detectSessionInUrl: true
   },
   global: {
-    headers: {'X-Client-Info': 'sportiko-trainer@1.0.0'}
+    headers: {
+      'X-Client-Info': 'sportiko-trainer@1.0.0',
+      'Accept': 'application/json' // Always include Accept header for all requests
+    }
   }
 });
 
@@ -136,7 +139,6 @@ export const demoAuth = {
 export const createTenantSchema = async (trainerId) => {
   try {
     console.log('Creating tenant schema for trainer:', trainerId);
-    
     // Use the database function that should be available to authenticated users
     const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
@@ -146,7 +148,6 @@ export const createTenantSchema = async (trainerId) => {
       console.error('Error calling create_basic_tenant_schema:', error);
       throw error;
     }
-    
     console.log('Schema created successfully:', data);
     return true;
   } catch (error) {
@@ -176,15 +177,13 @@ export const dbConfig = {
     try {
       const stored = localStorage.getItem('sportiko_db_config');
       if (!stored) return null;
-
-      const config = JSON.parse(stored);
       
+      const config = JSON.parse(stored);
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem('sportiko_db_config');
         return null;
       }
-      
       return config;
     } catch (error) {
       console.error('Error retrieving DB config:', error);

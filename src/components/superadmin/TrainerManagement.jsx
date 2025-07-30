@@ -25,23 +25,56 @@ const TrainerManagement = () => {
 
   useEffect(() => {
     loadTrainers();
+    // Also ensure superadmin record exists
+    ensureSuperadminRecord();
   }, []);
+
+  const ensureSuperadminRecord = async () => {
+    try {
+      console.log('🔧 Ensuring superadmin record exists...');
+      const { data, error } = await supabase.rpc('ensure_superadmin_record');
+      if (error) {
+        console.warn('⚠️ Could not ensure superadmin record:', error.message);
+      } else {
+        console.log('✅ Superadmin record ensured');
+      }
+    } catch (error) {
+      console.warn('⚠️ Exception ensuring superadmin record:', error);
+    }
+  };
+
+  const debugAuth = async () => {
+    try {
+      console.log('🔍 Debugging authentication...');
+      const { data, error } = await supabase.rpc('debug_superadmin_access');
+      if (error) {
+        console.error('❌ Debug error:', error);
+      } else {
+        console.log('🐛 Debug results:', data);
+      }
+    } catch (error) {
+      console.error('❌ Debug exception:', error);
+    }
+  };
 
   const loadTrainers = async () => {
     try {
       setLoading(true);
       console.log('📋 Loading trainers from database...');
-      
+
+      // Debug authentication first
+      await debugAuth();
+
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (error) {
         console.error('❌ Error loading trainers:', error);
         throw error;
       }
-      
+
       console.log('✅ Trainers loaded:', data?.length || 0, 'records');
       setTrainers(data || []);
     } catch (error) {
@@ -56,27 +89,27 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(`toggle-${trainerId}`);
       console.log(`🔄 Toggling trainer status for ${trainerId}`, { currentStatus });
-      
+
       const { error } = await supabase
         .from('trainers')
         .update({ is_active: !currentStatus })
         .eq('id', trainerId);
-        
+
       if (error) {
         console.error('❌ Error updating trainer status:', error);
         throw error;
       }
-      
+
       // Update local state
-      setTrainers(trainers.map(trainer => 
+      setTrainers(trainers.map(trainer =>
         trainer.id === trainerId ? { ...trainer, is_active: !currentStatus } : trainer
       ));
-      
+
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
       console.log('✅ Trainer status updated successfully');
     } catch (error) {
       console.error('❌ Error updating trainer status:', error);
-      toast.error('Failed to update trainer status');
+      toast.error('Failed to update trainer status: ' + error.message);
     } finally {
       setProcessingAction(null);
     }
@@ -86,34 +119,34 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(`extend-${trainerId}`);
       console.log(`📅 Extending trial for trainer ${trainerId}`);
-      
+
       const currentTrainer = trainers.find(t => t.id === trainerId);
       const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
       
       // Add 14 days to current trial end date (or current date if no trial)
       const newTrialEnd = new Date(currentTrialEnd);
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
-      
+
       const { error } = await supabase
         .from('trainers')
         .update({ trial_end: newTrialEnd.toISOString() })
         .eq('id', trainerId);
-        
+
       if (error) {
         console.error('❌ Error extending trial:', error);
         throw error;
       }
-      
+
       // Update local state
-      setTrainers(trainers.map(trainer => 
+      setTrainers(trainers.map(trainer =>
         trainer.id === trainerId ? { ...trainer, trial_end: newTrialEnd.toISOString() } : trainer
       ));
-      
+
       toast.success('Trial extended by 14 days');
       console.log('✅ Trial extended successfully');
     } catch (error) {
       console.error('❌ Error extending trial:', error);
-      toast.error('Failed to extend trial');
+      toast.error('Failed to extend trial: ' + error.message);
     } finally {
       setProcessingAction(null);
     }
@@ -124,11 +157,11 @@ const TrainerManagement = () => {
       setProcessingAction(`schema-${trainerId}`);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
       console.log(`🏗️ Creating tenant schema for trainer ${trainerId}`);
-      
+
       const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
         trainer_id: trainerId
       });
-      
+
       if (error) {
         console.error('❌ Error creating tenant schema:', error);
         
@@ -146,12 +179,85 @@ const TrainerManagement = () => {
         
         throw error;
       }
-      
+
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
       console.log('✅ Tenant schema created successfully');
     } catch (error) {
       console.error('❌ Error creating tenant schema:', error);
       toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
+  const handleDeleteTrainer = async (trainerId) => {
+    if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) {
+      return;
+    }
+
+    try {
+      setProcessingAction(`delete-${trainerId}`);
+      console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
+
+      // Show loading toast
+      toast.loading('Deleting trainer...', { id: 'delete-trainer' });
+
+      // Debug auth before deletion
+      await debugAuth();
+
+      // Make the DELETE request to Supabase
+      console.log('📡 Sending DELETE request to Supabase...');
+      const { data, error } = await supabase
+        .from('trainers')
+        .delete()
+        .eq('id', trainerId);
+
+      if (error) {
+        console.error('❌ Database deletion failed:', error);
+        toast.error(`Failed to delete trainer: ${error.message}`, { id: 'delete-trainer' });
+        throw error;
+      }
+
+      console.log('✅ Database deletion successful:', data);
+
+      // Update the UI state
+      console.log('🔄 Updating UI state...');
+      setTrainers(prevTrainers => {
+        const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
+        console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
+        return updatedTrainers;
+      });
+
+      // Show success message
+      toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
+      console.log('✅ Trainer deletion completed successfully');
+
+    } catch (error) {
+      console.error('❌ Exception during trainer deletion:', error);
+      
+      // Check if trainer still exists in database
+      console.log('🔍 Checking if trainer still exists in database...');
+      try {
+        const { data: checkData, error: checkError } = await supabase
+          .from('trainers')
+          .select('id')
+          .eq('id', trainerId)
+          .single();
+
+        if (checkError && checkError.code === 'PGRST116') {
+          // Trainer doesn't exist anymore - deletion actually worked
+          console.log('✅ Trainer was actually deleted from database');
+          setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
+          toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
+        } else if (checkData) {
+          // Trainer still exists
+          console.log('⚠️ Trainer still exists in database');
+          toast.error('Deletion failed - trainer still exists', { id: 'delete-trainer' });
+        }
+      } catch (checkException) {
+        console.error('❌ Could not verify deletion status:', checkException);
+        toast.error('Could not verify deletion status', { id: 'delete-trainer' });
+      }
     } finally {
       setProcessingAction(null);
     }
@@ -181,88 +287,17 @@ const TrainerManagement = () => {
     setShowModal(true);
   };
 
-  // ✅ PROPERLY FIXED DELETE HANDLER
-  const handleDeleteTrainer = async (trainerId) => {
-    if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) {
-      return;
-    }
-
-    try {
-      setProcessingAction(`delete-${trainerId}`);
-      console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
-      
-      // Show loading toast
-      toast.loading('Deleting trainer...', { id: 'delete-trainer' });
-      
-      // 1. FIRST: Make the actual DELETE request to Supabase
-      console.log('📡 Sending DELETE request to Supabase...');
-      const { data, error } = await supabase
-        .from('trainers')
-        .delete()
-        .eq('id', trainerId);
-      
-      if (error) {
-        console.error('❌ Database deletion failed:', error);
-        toast.error(`Failed to delete trainer: ${error.message}`, { id: 'delete-trainer' });
-        throw error;
-      }
-      
-      console.log('✅ Database deletion successful:', data);
-      
-      // 2. ONLY THEN: Update the UI state
-      console.log('🔄 Updating UI state...');
-      setTrainers(prevTrainers => {
-        const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
-        console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
-        return updatedTrainers;
-      });
-      
-      // 3. Show success message
-      toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
-      console.log('✅ Trainer deletion completed successfully');
-      
-    } catch (error) {
-      console.error('❌ Exception during trainer deletion:', error);
-      
-      // Even if there's an error, let's check what actually happened in the database
-      console.log('🔍 Checking if trainer still exists in database...');
-      try {
-        const { data: checkData, error: checkError } = await supabase
-          .from('trainers')
-          .select('id')
-          .eq('id', trainerId)
-          .single();
-          
-        if (checkError && checkError.code === 'PGRST116') {
-          // Trainer doesn't exist anymore - deletion actually worked
-          console.log('✅ Trainer was actually deleted from database');
-          setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
-          toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
-        } else if (checkData) {
-          // Trainer still exists
-          console.log('⚠️ Trainer still exists in database');
-          toast.error('Deletion failed - trainer still exists', { id: 'delete-trainer' });
-        }
-      } catch (checkException) {
-        console.error('❌ Could not verify deletion status:', checkException);
-        toast.error('Could not verify deletion status', { id: 'delete-trainer' });
-      }
-    } finally {
-      setProcessingAction(null);
-    }
-  };
-
   const handleSubmitTrainer = async () => {
     try {
       setProcessingAction('new');
       console.log('💾 Submitting trainer data:', newTrainer);
-      
+
       // Validate input
       if (!newTrainer.email || !newTrainer.full_name) {
         toast.error('Please fill in all required fields');
         return;
       }
-      
+
       if (editingTrainer) {
         // Update existing trainer
         console.log('📝 Updating existing trainer:', editingTrainer.id);
@@ -276,23 +311,22 @@ const TrainerManagement = () => {
           .eq('id', editingTrainer.id)
           .select()
           .single();
-          
+
         if (error) {
           console.error('❌ Error updating trainer:', error);
           throw error;
         }
-        
+
         setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
         toast.success('Trainer updated successfully');
         console.log('✅ Trainer updated successfully');
       } else {
         // Create new trainer
         console.log('➕ Creating new trainer');
-        
         const newTrainerId = crypto.randomUUID();
         const newTrialEnd = new Date();
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
-        
+
         try {
           // First create auth user - this will likely fail if user exists
           console.log('🔐 Creating auth user...');
@@ -305,7 +339,7 @@ const TrainerManagement = () => {
               }
             }
           });
-          
+
           if (signUpError) {
             // Check if user already exists
             if (signUpError.message.includes('already been registered')) {
@@ -315,29 +349,15 @@ const TrainerManagement = () => {
               throw signUpError;
             }
           }
-          
+
           // Get the user ID - either from signup or try to get from existing user
           let userId = signUpData?.user?.id;
-          
           if (!userId) {
-            // Try to get the user ID for the email
-            console.log('🔍 Looking up existing user ID...');
-            const { data: userData, error: userError } = await supabase
-              .from('users')
-              .select('id')
-              .eq('email', newTrainer.email)
-              .single();
-              
-            if (!userError && userData) {
-              userId = userData.id;
-              console.log('✅ Found existing user ID:', userId);
-            } else {
-              // Use the generated ID as fallback
-              userId = newTrainerId;
-              console.log('🆔 Using generated ID as fallback:', userId);
-            }
+            // Use the generated ID as fallback
+            userId = newTrainerId;
+            console.log('🆔 Using generated ID as fallback:', userId);
           }
-          
+
           // Create trainer record
           console.log('👨‍🏫 Creating trainer record...');
           const { data: trainerData, error: trainerError } = await supabase
@@ -351,17 +371,17 @@ const TrainerManagement = () => {
             }])
             .select()
             .single();
-            
+
           if (trainerError) {
             console.error('❌ Trainer creation error:', trainerError);
             throw trainerError;
           }
-          
+
           console.log('✅ Trainer created successfully:', trainerData);
-          
+
           // Add to local state
           setTrainers([trainerData, ...trainers]);
-          
+
           // Try to create tenant schema automatically
           try {
             await createTenantSchemaForTrainer(trainerData.id);
@@ -370,12 +390,13 @@ const TrainerManagement = () => {
             console.error('⚠️ Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
           }
+
         } catch (error) {
           console.error('❌ Error creating trainer:', error);
           throw error;
         }
       }
-      
+
       setShowModal(false);
       setNewTrainer({
         email: '',
@@ -384,9 +405,10 @@ const TrainerManagement = () => {
         subscription_plan: 'trial',
         trial_days: 14
       });
-      
+
       // Refresh the list
       await loadTrainers();
+
     } catch (error) {
       console.error('❌ Error saving trainer:', error);
       toast.error(error.message || 'Failed to save trainer');
@@ -395,14 +417,13 @@ const TrainerManagement = () => {
     }
   };
 
-  const filteredTrainers = trainers.filter(trainer => 
+  const filteredTrainers = trainers.filter(trainer =>
     trainer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     trainer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTrialStatus = (trialEnd) => {
     if (!trialEnd) return { status: 'expired', daysLeft: 0 };
-    
     const endDate = new Date(trialEnd);
     const today = new Date();
     const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
@@ -415,7 +436,10 @@ const TrainerManagement = () => {
   };
 
   const handleInputChange = (e) => {
-    setNewTrainer({...newTrainer, [e.target.name]: e.target.value});
+    setNewTrainer({
+      ...newTrainer,
+      [e.target.name]: e.target.value
+    });
   };
 
   if (loading) {
@@ -461,6 +485,12 @@ const TrainerManagement = () => {
             <SafeIcon icon={FiPlus} className="w-5 h-5 mr-2" />
             Add Trainer
           </button>
+          <button
+            onClick={debugAuth}
+            className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center text-sm"
+          >
+            Debug Auth
+          </button>
         </div>
       </div>
 
@@ -475,7 +505,6 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
-        
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiCheck} className="w-8 h-8 text-green-600" />
@@ -487,7 +516,6 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
-        
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiClock} className="w-8 h-8 text-yellow-600" />
@@ -509,7 +537,7 @@ const TrainerManagement = () => {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">All Trainers ({filteredTrainers.length})</h3>
         </div>
-        
+
         {filteredTrainers.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-gray-500 mb-4">No trainers found</p>
@@ -550,7 +578,7 @@ const TrainerManagement = () => {
                 {filteredTrainers.map((trainer) => {
                   const trialStatus = getTrialStatus(trainer.trial_end);
                   const isProcessingThisTrainer = processingAction?.includes(trainer.id);
-                  
+
                   return (
                     <motion.tr
                       key={trainer.id}
@@ -627,7 +655,7 @@ const TrainerManagement = () => {
                           >
                             <SafeIcon icon={FiEdit} className="w-4 h-4" />
                           </button>
-                          
+
                           <button
                             onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
                             disabled={isProcessingThisTrainer}
@@ -643,7 +671,7 @@ const TrainerManagement = () => {
                               trainer.is_active !== false ? 'Deactivate' : 'Activate'
                             )}
                           </button>
-                          
+
                           <button
                             onClick={() => extendTrial(trainer.id)}
                             disabled={isProcessingThisTrainer}
@@ -657,7 +685,7 @@ const TrainerManagement = () => {
                               'Extend Trial'
                             )}
                           </button>
-                          
+
                           <button
                             onClick={() => createTenantSchemaForTrainer(trainer.id)}
                             disabled={isProcessingThisTrainer}
@@ -672,8 +700,7 @@ const TrainerManagement = () => {
                               'Create Schema'
                             )}
                           </button>
-                          
-                          {/* ✅ FIXED DELETE BUTTON */}
+
                           <button
                             onClick={() => handleDeleteTrainer(trainer.id)}
                             disabled={isProcessingThisTrainer}
@@ -704,6 +731,7 @@ const TrainerManagement = () => {
             <h2 className="text-xl font-semibold mb-4">
               {editingTrainer ? 'Edit Trainer' : 'Add New Trainer'}
             </h2>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -718,6 +746,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's full name"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
@@ -732,6 +761,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's email"
                 />
               </div>
+
               {!editingTrainer && (
                 <>
                   <div>
@@ -747,6 +777,7 @@ const TrainerManagement = () => {
                       placeholder="Enter password"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Trial Days
@@ -763,6 +794,7 @@ const TrainerManagement = () => {
                   </div>
                 </>
               )}
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   onClick={() => setShowModal(false)}

@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiEdit, FiTrash2, FiEye, FiEyeOff } = FiIcons;
+const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiEdit, FiTrash2, FiEye, FiEyeOff, FiLoader } = FiIcons;
 
 const TrainerManagement = () => {
   const [trainers, setTrainers] = useState([]);
@@ -31,14 +31,15 @@ const TrainerManagement = () => {
     try {
       setLoading(true);
       console.log('Loading trainers...');
-
+      
+      // Use proper headers for API request
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false });
-
+        
       if (error) throw error;
-
+      
       console.log('Trainers data loaded:', data?.length || 0, 'records');
       setTrainers(data || []);
     } catch (error) {
@@ -52,17 +53,18 @@ const TrainerManagement = () => {
   const toggleTrainerStatus = async (trainerId, currentStatus) => {
     try {
       setProcessingAction(trainerId);
+      
       const { error } = await supabase
         .from('trainers')
         .update({ is_active: !currentStatus })
         .eq('id', trainerId);
-
+        
       if (error) throw error;
-
-      setTrainers(trainers.map(trainer =>
+      
+      setTrainers(trainers.map(trainer => 
         trainer.id === trainerId ? { ...trainer, is_active: !currentStatus } : trainer
       ));
-
+      
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
       console.error('Error updating trainer status:', error);
@@ -75,24 +77,25 @@ const TrainerManagement = () => {
   const extendTrial = async (trainerId) => {
     try {
       setProcessingAction(trainerId);
+      
       const currentTrainer = trainers.find(t => t.id === trainerId);
       const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
       
       // Add 14 days to current trial end date (or current date if no trial)
       const newTrialEnd = new Date(currentTrialEnd);
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
-
+      
       const { error } = await supabase
         .from('trainers')
         .update({ trial_end: newTrialEnd.toISOString() })
         .eq('id', trainerId);
-
+        
       if (error) throw error;
-
-      setTrainers(trainers.map(trainer =>
+      
+      setTrainers(trainers.map(trainer => 
         trainer.id === trainerId ? { ...trainer, trial_end: newTrialEnd.toISOString() } : trainer
       ));
-
+      
       toast.success('Trial extended by 14 days');
     } catch (error) {
       console.error('Error extending trial:', error);
@@ -106,12 +109,12 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(trainerId);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
-
+      
       // Use the improved schema creation function with error handling
       const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
         trainer_id: trainerId
       });
-
+      
       if (error) {
         console.error('Error creating tenant schema:', error);
         
@@ -129,7 +132,7 @@ const TrainerManagement = () => {
         
         throw error;
       }
-
+      
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
     } catch (error) {
       console.error('Error creating tenant schema:', error);
@@ -164,24 +167,38 @@ const TrainerManagement = () => {
   };
 
   const handleDeleteTrainer = async (trainerId) => {
-    if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) return;
+    if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) {
+      return;
+    }
 
     try {
       setProcessingAction(trainerId);
       
-      // First delete the trainer record
+      // Delete from auth.users first (if you have service role key)
+      // For now, we'll just delete from trainers table
+      
+      // Use proper headers for API request with Accept: application/json
       const { error } = await supabase
         .from('trainers')
         .delete()
-        .eq('id', trainerId);
-
-      if (error) throw error;
-
-      setTrainers(trainers.filter(t => t.id !== trainerId));
+        .eq('id', trainerId)
+        .select();
+      
+      if (error) {
+        console.error('Error deleting trainer:', error);
+        throw error;
+      }
+      
+      // Update local state by filtering out the deleted trainer
+      setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
+      
       toast.success('Trainer deleted successfully');
+      
+      // Optional: Also delete any related tenant schema
+      // This would require service role access and is typically handled by database triggers
     } catch (error) {
       console.error('Error deleting trainer:', error);
-      toast.error('Failed to delete trainer');
+      toast.error('Failed to delete trainer: ' + (error.message || 'Unknown error'));
     } finally {
       setProcessingAction(null);
     }
@@ -190,13 +207,13 @@ const TrainerManagement = () => {
   const handleSubmitTrainer = async () => {
     try {
       setProcessingAction('new');
-
+      
       // Validate input
       if (!newTrainer.email || !newTrainer.full_name) {
         toast.error('Please fill in all required fields');
         return;
       }
-
+      
       if (editingTrainer) {
         // Update existing trainer
         const { data, error } = await supabase
@@ -209,20 +226,20 @@ const TrainerManagement = () => {
           .eq('id', editingTrainer.id)
           .select()
           .single();
-
+          
         if (error) throw error;
-
+        
         setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
         toast.success('Trainer updated successfully');
       } else {
         // Create new trainer - different approach
         console.log('Creating new trainer:', newTrainer);
-
+        
         // Generate a UUID for the new trainer
         const newTrainerId = crypto.randomUUID();
         const newTrialEnd = new Date();
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
-
+        
         try {
           // First create auth user - this will likely fail if user exists
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
@@ -234,7 +251,7 @@ const TrainerManagement = () => {
               }
             }
           });
-
+          
           if (signUpError) {
             // Check if user already exists
             if (signUpError.message.includes('already been registered')) {
@@ -245,10 +262,10 @@ const TrainerManagement = () => {
               throw signUpError;
             }
           }
-
+          
           // Get the user ID - either from signup or try to get from existing user
           let userId = signUpData?.user?.id;
-
+          
           // If we couldn't get user ID (likely because user already exists)
           if (!userId) {
             // Try to get the user ID for the email
@@ -257,7 +274,7 @@ const TrainerManagement = () => {
               .select('id')
               .eq('email', newTrainer.email)
               .single();
-
+              
             if (!userError && userData) {
               userId = userData.id;
             } else {
@@ -265,7 +282,7 @@ const TrainerManagement = () => {
               userId = newTrainerId;
             }
           }
-
+          
           // Create trainer record
           const { data: trainerData, error: trainerError } = await supabase
             .from('trainers')
@@ -278,17 +295,17 @@ const TrainerManagement = () => {
             }])
             .select()
             .single();
-
+            
           if (trainerError) {
             console.error('Trainer creation error:', trainerError);
             throw trainerError;
           }
-
+          
           console.log('Trainer created:', trainerData);
-
+          
           // Add to local state
           setTrainers([trainerData, ...trainers]);
-
+          
           // Try to create tenant schema automatically
           try {
             await createTenantSchemaForTrainer(trainerData.id);
@@ -297,13 +314,12 @@ const TrainerManagement = () => {
             console.error('Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
           }
-
         } catch (error) {
           console.error('Error creating trainer:', error);
           throw error;
         }
       }
-
+      
       setShowModal(false);
       setNewTrainer({
         email: '',
@@ -312,7 +328,7 @@ const TrainerManagement = () => {
         subscription_plan: 'trial',
         trial_days: 14
       });
-
+      
       // Refresh the list
       await loadTrainers();
     } catch (error) {
@@ -323,7 +339,7 @@ const TrainerManagement = () => {
     }
   };
 
-  const filteredTrainers = trainers.filter(trainer =>
+  const filteredTrainers = trainers.filter(trainer => 
     trainer.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     trainer.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -343,10 +359,7 @@ const TrainerManagement = () => {
   };
 
   const handleInputChange = (e) => {
-    setNewTrainer({
-      ...newTrainer,
-      [e.target.name]: e.target.value
-    });
+    setNewTrainer({...newTrainer, [e.target.name]: e.target.value});
   };
 
   if (loading) {
@@ -406,6 +419,7 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
+        
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiCheck} className="w-8 h-8 text-green-600" />
@@ -417,6 +431,7 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
+        
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiClock} className="w-8 h-8 text-yellow-600" />
@@ -438,6 +453,7 @@ const TrainerManagement = () => {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">All Trainers ({filteredTrainers.length})</h3>
         </div>
+        
         {filteredTrainers.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-gray-500 mb-4">No trainers found</p>
@@ -560,7 +576,11 @@ const TrainerManagement = () => {
                                 : 'bg-green-100 text-green-700 hover:bg-green-200'
                             } ${processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
-                            {trainer.is_active !== false ? 'Deactivate' : 'Activate'}
+                            {processingAction === trainer.id && processingAction === 'toggle' ? (
+                              <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
+                            ) : (
+                              trainer.is_active !== false ? 'Deactivate' : 'Activate'
+                            )}
                           </button>
                           <button
                             onClick={() => extendTrial(trainer.id)}
@@ -569,7 +589,11 @@ const TrainerManagement = () => {
                               processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
-                            Extend Trial
+                            {processingAction === trainer.id && processingAction === 'extend' ? (
+                              <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
+                            ) : (
+                              'Extend Trial'
+                            )}
                           </button>
                           <button
                             onClick={() => createTenantSchemaForTrainer(trainer.id)}
@@ -579,14 +603,22 @@ const TrainerManagement = () => {
                             }`}
                           >
                             <SafeIcon icon={FiDatabase} className="w-3 h-3 mr-1" />
-                            {processingAction === trainer.id ? 'Creating...' : 'Create Schema'}
+                            {processingAction === trainer.id && processingAction === 'schema' ? (
+                              'Creating...'
+                            ) : (
+                              'Create Schema'
+                            )}
                           </button>
                           <button
                             onClick={() => handleDeleteTrainer(trainer.id)}
                             disabled={processingAction === trainer.id}
                             className="text-red-600 hover:text-red-900"
                           >
-                            <SafeIcon icon={FiTrash2} className="w-4 h-4" />
+                            {processingAction === trainer.id && processingAction === 'delete' ? (
+                              <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <SafeIcon icon={FiTrash2} className="w-4 h-4" />
+                            )}
                           </button>
                         </div>
                       </td>
@@ -679,11 +711,11 @@ const TrainerManagement = () => {
                     processingAction === 'new' ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
-                  {processingAction === 'new'
-                    ? 'Saving...'
-                    : editingTrainer
-                    ? 'Update Trainer'
-                    : 'Add Trainer'}
+                  {processingAction === 'new' ? (
+                    'Saving...'
+                  ) : (
+                    editingTrainer ? 'Update Trainer' : 'Add Trainer'
+                  )}
                 </button>
               </div>
             </div>

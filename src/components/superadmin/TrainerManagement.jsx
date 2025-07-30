@@ -30,19 +30,22 @@ const TrainerManagement = () => {
   const loadTrainers = async () => {
     try {
       setLoading(true);
-      console.log('Loading trainers...');
+      console.log('📋 Loading trainers from database...');
       
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false });
         
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error loading trainers:', error);
+        throw error;
+      }
       
-      console.log('Trainers data loaded:', data?.length || 0, 'records');
+      console.log('✅ Trainers loaded:', data?.length || 0, 'records');
       setTrainers(data || []);
     } catch (error) {
-      console.error('Error loading trainers:', error);
+      console.error('❌ Failed to load trainers:', error);
       toast.error('Failed to load trainers: ' + (error?.message || 'Unknown error'));
     } finally {
       setLoading(false);
@@ -51,22 +54,28 @@ const TrainerManagement = () => {
 
   const toggleTrainerStatus = async (trainerId, currentStatus) => {
     try {
-      setProcessingAction(trainerId);
+      setProcessingAction(`toggle-${trainerId}`);
+      console.log(`🔄 Toggling trainer status for ${trainerId}`, { currentStatus });
       
       const { error } = await supabase
         .from('trainers')
         .update({ is_active: !currentStatus })
         .eq('id', trainerId);
         
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error updating trainer status:', error);
+        throw error;
+      }
       
+      // Update local state
       setTrainers(trainers.map(trainer => 
         trainer.id === trainerId ? { ...trainer, is_active: !currentStatus } : trainer
       ));
       
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
+      console.log('✅ Trainer status updated successfully');
     } catch (error) {
-      console.error('Error updating trainer status:', error);
+      console.error('❌ Error updating trainer status:', error);
       toast.error('Failed to update trainer status');
     } finally {
       setProcessingAction(null);
@@ -75,7 +84,8 @@ const TrainerManagement = () => {
 
   const extendTrial = async (trainerId) => {
     try {
-      setProcessingAction(trainerId);
+      setProcessingAction(`extend-${trainerId}`);
+      console.log(`📅 Extending trial for trainer ${trainerId}`);
       
       const currentTrainer = trainers.find(t => t.id === trainerId);
       const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
@@ -89,15 +99,20 @@ const TrainerManagement = () => {
         .update({ trial_end: newTrialEnd.toISOString() })
         .eq('id', trainerId);
         
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error extending trial:', error);
+        throw error;
+      }
       
+      // Update local state
       setTrainers(trainers.map(trainer => 
         trainer.id === trainerId ? { ...trainer, trial_end: newTrialEnd.toISOString() } : trainer
       ));
       
       toast.success('Trial extended by 14 days');
+      console.log('✅ Trial extended successfully');
     } catch (error) {
-      console.error('Error extending trial:', error);
+      console.error('❌ Error extending trial:', error);
       toast.error('Failed to extend trial');
     } finally {
       setProcessingAction(null);
@@ -106,16 +121,16 @@ const TrainerManagement = () => {
 
   const createTenantSchemaForTrainer = async (trainerId) => {
     try {
-      setProcessingAction(trainerId);
+      setProcessingAction(`schema-${trainerId}`);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
+      console.log(`🏗️ Creating tenant schema for trainer ${trainerId}`);
       
-      // Use the improved schema creation function with error handling
       const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
         trainer_id: trainerId
       });
       
       if (error) {
-        console.error('Error creating tenant schema:', error);
+        console.error('❌ Error creating tenant schema:', error);
         
         // Check if policy already exists error
         if (error.code === '42710') {
@@ -133,8 +148,9 @@ const TrainerManagement = () => {
       }
       
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
+      console.log('✅ Tenant schema created successfully');
     } catch (error) {
-      console.error('Error creating tenant schema:', error);
+      console.error('❌ Error creating tenant schema:', error);
       toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
     } finally {
       setProcessingAction(null);
@@ -165,45 +181,72 @@ const TrainerManagement = () => {
     setShowModal(true);
   };
 
-  // Fixed delete handler that forces UI update regardless of API response
+  // ✅ PROPERLY FIXED DELETE HANDLER
   const handleDeleteTrainer = async (trainerId) => {
     if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) {
       return;
     }
 
     try {
-      setProcessingAction(trainerId);
-      console.log(`Deleting trainer ${trainerId}...`);
+      setProcessingAction(`delete-${trainerId}`);
+      console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
       
-      // First, update the UI immediately to provide instant feedback
-      const trainerToDelete = trainers.find(t => t.id === trainerId);
-      const updatedTrainers = trainers.filter(t => t.id !== trainerId);
-      setTrainers(updatedTrainers);
+      // Show loading toast
+      toast.loading('Deleting trainer...', { id: 'delete-trainer' });
       
-      // Then try to delete from the database
-      const { error } = await supabase
+      // 1. FIRST: Make the actual DELETE request to Supabase
+      console.log('📡 Sending DELETE request to Supabase...');
+      const { data, error } = await supabase
         .from('trainers')
         .delete()
         .eq('id', trainerId);
       
       if (error) {
-        console.error('Error in database deletion:', error);
-        // Even if there's an error, we keep the UI updated
-        // This might lead to data inconsistency but prevents the visual bug
-        toast.error(`Database error: ${error.message}. UI updated anyway.`);
-      } else {
-        toast.success('Trainer deleted successfully');
-        console.log('Trainer deleted successfully');
+        console.error('❌ Database deletion failed:', error);
+        toast.error(`Failed to delete trainer: ${error.message}`, { id: 'delete-trainer' });
+        throw error;
       }
       
-      // Optional: refresh the list to ensure consistency
-      setTimeout(() => {
-        loadTrainers();
-      }, 1000);
+      console.log('✅ Database deletion successful:', data);
+      
+      // 2. ONLY THEN: Update the UI state
+      console.log('🔄 Updating UI state...');
+      setTrainers(prevTrainers => {
+        const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
+        console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
+        return updatedTrainers;
+      });
+      
+      // 3. Show success message
+      toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
+      console.log('✅ Trainer deletion completed successfully');
       
     } catch (error) {
-      console.error('Exception during trainer deletion:', error);
-      toast.error('An error occurred, but UI has been updated');
+      console.error('❌ Exception during trainer deletion:', error);
+      
+      // Even if there's an error, let's check what actually happened in the database
+      console.log('🔍 Checking if trainer still exists in database...');
+      try {
+        const { data: checkData, error: checkError } = await supabase
+          .from('trainers')
+          .select('id')
+          .eq('id', trainerId)
+          .single();
+          
+        if (checkError && checkError.code === 'PGRST116') {
+          // Trainer doesn't exist anymore - deletion actually worked
+          console.log('✅ Trainer was actually deleted from database');
+          setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
+          toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
+        } else if (checkData) {
+          // Trainer still exists
+          console.log('⚠️ Trainer still exists in database');
+          toast.error('Deletion failed - trainer still exists', { id: 'delete-trainer' });
+        }
+      } catch (checkException) {
+        console.error('❌ Could not verify deletion status:', checkException);
+        toast.error('Could not verify deletion status', { id: 'delete-trainer' });
+      }
     } finally {
       setProcessingAction(null);
     }
@@ -212,6 +255,7 @@ const TrainerManagement = () => {
   const handleSubmitTrainer = async () => {
     try {
       setProcessingAction('new');
+      console.log('💾 Submitting trainer data:', newTrainer);
       
       // Validate input
       if (!newTrainer.email || !newTrainer.full_name) {
@@ -221,6 +265,7 @@ const TrainerManagement = () => {
       
       if (editingTrainer) {
         // Update existing trainer
+        console.log('📝 Updating existing trainer:', editingTrainer.id);
         const { data, error } = await supabase
           .from('trainers')
           .update({
@@ -232,21 +277,25 @@ const TrainerManagement = () => {
           .select()
           .single();
           
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Error updating trainer:', error);
+          throw error;
+        }
         
         setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
         toast.success('Trainer updated successfully');
+        console.log('✅ Trainer updated successfully');
       } else {
-        // Create new trainer - different approach
-        console.log('Creating new trainer:', newTrainer);
+        // Create new trainer
+        console.log('➕ Creating new trainer');
         
-        // Generate a UUID for the new trainer
         const newTrainerId = crypto.randomUUID();
         const newTrialEnd = new Date();
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
         
         try {
           // First create auth user - this will likely fail if user exists
+          console.log('🔐 Creating auth user...');
           const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: newTrainer.email,
             password: newTrainer.password,
@@ -260,10 +309,9 @@ const TrainerManagement = () => {
           if (signUpError) {
             // Check if user already exists
             if (signUpError.message.includes('already been registered')) {
-              console.log('User already registered, continuing with trainer creation');
-              // Continue with trainer creation even if auth user exists
+              console.log('👤 User already registered, continuing with trainer creation');
             } else {
-              console.error('Auth signup failed:', signUpError);
+              console.error('❌ Auth signup failed:', signUpError);
               throw signUpError;
             }
           }
@@ -271,9 +319,9 @@ const TrainerManagement = () => {
           // Get the user ID - either from signup or try to get from existing user
           let userId = signUpData?.user?.id;
           
-          // If we couldn't get user ID (likely because user already exists)
           if (!userId) {
             // Try to get the user ID for the email
+            console.log('🔍 Looking up existing user ID...');
             const { data: userData, error: userError } = await supabase
               .from('users')
               .select('id')
@@ -282,13 +330,16 @@ const TrainerManagement = () => {
               
             if (!userError && userData) {
               userId = userData.id;
+              console.log('✅ Found existing user ID:', userId);
             } else {
               // Use the generated ID as fallback
               userId = newTrainerId;
+              console.log('🆔 Using generated ID as fallback:', userId);
             }
           }
           
           // Create trainer record
+          console.log('👨‍🏫 Creating trainer record...');
           const { data: trainerData, error: trainerError } = await supabase
             .from('trainers')
             .insert([{
@@ -302,11 +353,11 @@ const TrainerManagement = () => {
             .single();
             
           if (trainerError) {
-            console.error('Trainer creation error:', trainerError);
+            console.error('❌ Trainer creation error:', trainerError);
             throw trainerError;
           }
           
-          console.log('Trainer created:', trainerData);
+          console.log('✅ Trainer created successfully:', trainerData);
           
           // Add to local state
           setTrainers([trainerData, ...trainers]);
@@ -316,11 +367,11 @@ const TrainerManagement = () => {
             await createTenantSchemaForTrainer(trainerData.id);
             toast.success('Trainer and schema created successfully!');
           } catch (schemaError) {
-            console.error('Schema creation failed:', schemaError);
+            console.error('⚠️ Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
           }
         } catch (error) {
-          console.error('Error creating trainer:', error);
+          console.error('❌ Error creating trainer:', error);
           throw error;
         }
       }
@@ -337,7 +388,7 @@ const TrainerManagement = () => {
       // Refresh the list
       await loadTrainers();
     } catch (error) {
-      console.error('Error saving trainer:', error);
+      console.error('❌ Error saving trainer:', error);
       toast.error(error.message || 'Failed to save trainer');
     } finally {
       setProcessingAction(null);
@@ -498,12 +549,15 @@ const TrainerManagement = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredTrainers.map((trainer) => {
                   const trialStatus = getTrialStatus(trainer.trial_end);
+                  const isProcessingThisTrainer = processingAction?.includes(trainer.id);
+                  
                   return (
                     <motion.tr
                       key={trainer.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.3 }}
+                      className={isProcessingThisTrainer ? 'opacity-50' : ''}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -568,59 +622,65 @@ const TrainerManagement = () => {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleEditTrainer(trainer)}
-                            className="text-blue-600 hover:text-blue-900"
+                            disabled={isProcessingThisTrainer}
+                            className="text-blue-600 hover:text-blue-900 disabled:opacity-50"
                           >
                             <SafeIcon icon={FiEdit} className="w-4 h-4" />
                           </button>
+                          
                           <button
                             onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
-                            disabled={processingAction === trainer.id}
+                            disabled={isProcessingThisTrainer}
                             className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                               trainer.is_active !== false
                                 ? 'bg-red-100 text-red-700 hover:bg-red-200'
                                 : 'bg-green-100 text-green-700 hover:bg-green-200'
-                            } ${processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            } ${isProcessingThisTrainer ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
-                            {processingAction === trainer.id ? (
+                            {processingAction === `toggle-${trainer.id}` ? (
                               <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
                             ) : (
                               trainer.is_active !== false ? 'Deactivate' : 'Activate'
                             )}
                           </button>
+                          
                           <button
                             onClick={() => extendTrial(trainer.id)}
-                            disabled={processingAction === trainer.id}
+                            disabled={isProcessingThisTrainer}
                             className={`px-3 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-xs font-medium transition-colors ${
-                              processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
+                              isProcessingThisTrainer ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
-                            {processingAction === trainer.id ? (
+                            {processingAction === `extend-${trainer.id}` ? (
                               <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
                             ) : (
                               'Extend Trial'
                             )}
                           </button>
+                          
                           <button
                             onClick={() => createTenantSchemaForTrainer(trainer.id)}
-                            disabled={processingAction === trainer.id}
+                            disabled={isProcessingThisTrainer}
                             className={`px-3 py-1 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-lg text-xs font-medium transition-colors flex items-center ${
-                              processingAction === trainer.id ? 'opacity-50 cursor-not-allowed' : ''
+                              isProcessingThisTrainer ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
                             <SafeIcon icon={FiDatabase} className="w-3 h-3 mr-1" />
-                            {processingAction === trainer.id ? (
+                            {processingAction === `schema-${trainer.id}` ? (
                               'Creating...'
                             ) : (
                               'Create Schema'
                             )}
                           </button>
+                          
+                          {/* ✅ FIXED DELETE BUTTON */}
                           <button
                             onClick={() => handleDeleteTrainer(trainer.id)}
-                            disabled={processingAction === trainer.id}
-                            className="text-red-600 hover:text-red-900"
-                            id={`delete-trainer-${trainer.id}`}
+                            disabled={isProcessingThisTrainer}
+                            className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Delete Trainer"
                           >
-                            {processingAction === trainer.id ? (
+                            {processingAction === `delete-${trainer.id}` ? (
                               <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
                             ) : (
                               <SafeIcon icon={FiTrash2} className="w-4 h-4" />

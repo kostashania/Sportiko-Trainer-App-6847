@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import {
   Table,
@@ -31,7 +31,7 @@ import {
   getFilteredRowModel,
 } from '@tanstack/react-table'
 import { format } from 'date-fns'
-import { MoreHorizontal, Search, Plus, Loader2 } from 'lucide-react'
+import { MoreHorizontal, Search, Plus, Loader2, Calendar } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
 type Trainer = {
@@ -47,74 +47,163 @@ export default function TrainerManagement() {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [data, setData] = useState<Trainer[]>([])
+  const queryClient = useQueryClient()
 
   // Fetch trainers
   const { isLoading } = useQuery({
     queryKey: ['trainers'],
     queryFn: async () => {
+      console.log('📋 Fetching trainers...')
       const { data, error } = await supabase
         .from('trainers')
         .select('*')
         .order('created_at', { ascending: false })
 
       if (error) {
+        console.error('❌ Error fetching trainers:', error)
         throw error
       }
 
+      console.log('✅ Fetched trainers:', data?.length || 0)
       setData(data || [])
       return data
     },
   })
 
-  // Delete trainer mutation - FIXED: Now sends DELETE request to Supabase
+  // Delete trainer mutation - Fixed with proper logging
   const deleteTrainer = useMutation({
     mutationFn: async ({ id }: { id: string }) => {
+      console.log('🗑️ Deleting trainer:', id)
+      
+      // Show loading toast
+      toast.loading('Deleting trainer...', { id: 'delete-trainer' })
+      
       // Send DELETE request to Supabase
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('trainers')
         .delete()
         .eq('id', id)
-
+      
+      console.log('Delete response:', { data, error })
+      
       if (error) {
+        console.error('❌ Delete failed:', error)
         throw new Error(`Failed to delete trainer: ${error.message}`)
       }
-
+      
+      console.log('✅ Delete successful')
       return id // Return the id for use in onSuccess
     },
     onSuccess: (deletedId) => {
       // Only update UI after successful database deletion
-      setData((prevData) => prevData.filter((trainer) => trainer.id !== deletedId))
-      toast.success('Trainer deleted successfully')
+      console.log('🔄 Updating UI after deletion:', deletedId)
+      setData((prevData) => {
+        const newData = prevData.filter((trainer) => trainer.id !== deletedId)
+        console.log(`UI updated: ${prevData.length} → ${newData.length} trainers`)
+        return newData
+      })
+      toast.success('Trainer deleted successfully', { id: 'delete-trainer' })
+      
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ['trainers'] })
     },
     onError: (error: Error) => {
-      toast.error(error.message)
+      console.error('❌ Delete error:', error)
+      toast.error(error.message, { id: 'delete-trainer' })
     }
   })
 
-  // Toggle trainer status
+  // Toggle trainer status with enhanced logging
   const toggleTrainerStatus = useMutation({
     mutationFn: async ({ id, currentStatus }: { id: string; currentStatus: boolean }) => {
-      const { error } = await supabase
+      console.log(`🔄 Toggling trainer status for ${id}:`, { currentStatus, newStatus: !currentStatus })
+      
+      toast.loading('Updating trainer status...', { id: 'toggle-status' })
+      
+      const { data, error } = await supabase
         .from('trainers')
         .update({ is_active: !currentStatus })
         .eq('id', id)
-
+        .select()
+      
+      console.log('Toggle status response:', { data, error })
+      
       if (error) {
+        console.error('❌ Toggle status failed:', error)
         throw error
       }
-
+      
+      console.log('✅ Toggle status successful')
       return { id, newStatus: !currentStatus }
     },
     onSuccess: ({ id, newStatus }) => {
+      console.log(`🔄 Updating UI: trainer ${id} status → ${newStatus}`)
       setData((prevData) =>
         prevData.map((trainer) =>
           trainer.id === id ? { ...trainer, is_active: newStatus } : trainer
         )
       )
-      toast.success(`Trainer ${newStatus ? 'activated' : 'deactivated'} successfully`)
+      toast.success(`Trainer ${newStatus ? 'activated' : 'deactivated'} successfully`, { id: 'toggle-status' })
+      
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ['trainers'] })
     },
     onError: (error) => {
-      toast.error(`Failed to update trainer status: ${error}`)
+      console.error('❌ Toggle status error:', error)
+      toast.error(`Failed to update trainer status: ${error}`, { id: 'toggle-status' })
+    },
+  })
+  
+  // Extend trial mutation
+  const extendTrial = useMutation({
+    mutationFn: async ({ id, currentTrialEnd }: { id: string; currentTrialEnd: string | null }) => {
+      console.log(`📅 Extending trial for trainer ${id}`, { currentTrialEnd })
+      
+      toast.loading('Extending trial period...', { id: 'extend-trial' })
+      
+      // Calculate new trial end date (current + 14 days)
+      const trialEnd = currentTrialEnd ? new Date(currentTrialEnd) : new Date()
+      const newTrialEnd = new Date(trialEnd)
+      newTrialEnd.setDate(newTrialEnd.getDate() + 14)
+      
+      console.log('Trial dates:', { 
+        currentTrialEnd, 
+        parsedCurrentEnd: currentTrialEnd ? new Date(currentTrialEnd).toISOString() : 'none',
+        newTrialEnd: newTrialEnd.toISOString() 
+      })
+      
+      // Update the trial end date
+      const { data, error } = await supabase
+        .from('trainers')
+        .update({ trial_end: newTrialEnd.toISOString() })
+        .eq('id', id)
+        .select()
+      
+      console.log('Extend trial response:', { data, error })
+      
+      if (error) {
+        console.error('❌ Extend trial failed:', error)
+        throw error
+      }
+      
+      console.log('✅ Trial extended successfully')
+      return { id, newTrialEnd: newTrialEnd.toISOString() }
+    },
+    onSuccess: ({ id, newTrialEnd }) => {
+      console.log(`🔄 Updating UI: trainer ${id} trial end → ${newTrialEnd}`)
+      setData((prevData) =>
+        prevData.map((trainer) =>
+          trainer.id === id ? { ...trainer, trial_end: newTrialEnd } : trainer
+        )
+      )
+      toast.success('Trial extended by 14 days', { id: 'extend-trial' })
+      
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ['trainers'] })
+    },
+    onError: (error) => {
+      console.error('❌ Extend trial error:', error)
+      toast.error(`Failed to extend trial: ${error}`, { id: 'extend-trial' })
     },
   })
 
@@ -170,7 +259,8 @@ export default function TrainerManagement() {
       cell: ({ row }) => {
         const isProcessing = 
           toggleTrainerStatus.isPending && toggleTrainerStatus.variables?.id === row.original.id ||
-          deleteTrainer.isPending && deleteTrainer.variables?.id === row.original.id
+          deleteTrainer.isPending && deleteTrainer.variables?.id === row.original.id ||
+          extendTrial.isPending && extendTrial.variables?.id === row.original.id
 
         return (
           <DropdownMenu>
@@ -196,6 +286,20 @@ export default function TrainerManagement() {
               >
                 {row.original.is_active ? 'Deactivate' : 'Activate'}
               </DropdownMenuItem>
+              
+              <DropdownMenuItem
+                onClick={() => 
+                  extendTrial.mutate({
+                    id: row.original.id,
+                    currentTrialEnd: row.original.trial_end
+                  })
+                }
+                disabled={isProcessing}
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Extend Trial
+              </DropdownMenuItem>
+              
               <DropdownMenuItem
                 className="text-red-600"
                 onClick={() => {

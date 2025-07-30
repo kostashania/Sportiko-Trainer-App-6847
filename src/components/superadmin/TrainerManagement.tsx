@@ -1,0 +1,326 @@
+import React, { useState, useEffect } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { supabase } from '../../lib/supabase'
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from '../../components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu'
+import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
+import { Badge } from '../../components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  getPaginationRowModel,
+  SortingState,
+  getSortedRowModel,
+  ColumnFiltersState,
+  getFilteredRowModel,
+} from '@tanstack/react-table'
+import { format } from 'date-fns'
+import { MoreHorizontal, Search, Plus, Loader2 } from 'lucide-react'
+import { toast } from 'react-hot-toast'
+
+type Trainer = {
+  id: string
+  email: string
+  full_name: string
+  is_active: boolean
+  trial_end: string
+  created_at: string
+}
+
+export default function TrainerManagement() {
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [data, setData] = useState<Trainer[]>([])
+
+  // Fetch trainers
+  const { isLoading } = useQuery({
+    queryKey: ['trainers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trainers')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        throw error
+      }
+
+      setData(data || [])
+      return data
+    },
+  })
+
+  // Delete trainer mutation - FIXED: Now sends DELETE request to Supabase
+  const deleteTrainer = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      // Send DELETE request to Supabase
+      const { error } = await supabase
+        .from('trainers')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        throw new Error(`Failed to delete trainer: ${error.message}`)
+      }
+
+      return id // Return the id for use in onSuccess
+    },
+    onSuccess: (deletedId) => {
+      // Only update UI after successful database deletion
+      setData((prevData) => prevData.filter((trainer) => trainer.id !== deletedId))
+      toast.success('Trainer deleted successfully')
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    }
+  })
+
+  // Toggle trainer status
+  const toggleTrainerStatus = useMutation({
+    mutationFn: async ({ id, currentStatus }: { id: string; currentStatus: boolean }) => {
+      const { error } = await supabase
+        .from('trainers')
+        .update({ is_active: !currentStatus })
+        .eq('id', id)
+
+      if (error) {
+        throw error
+      }
+
+      return { id, newStatus: !currentStatus }
+    },
+    onSuccess: ({ id, newStatus }) => {
+      setData((prevData) =>
+        prevData.map((trainer) =>
+          trainer.id === id ? { ...trainer, is_active: newStatus } : trainer
+        )
+      )
+      toast.success(`Trainer ${newStatus ? 'activated' : 'deactivated'} successfully`)
+    },
+    onError: (error) => {
+      toast.error(`Failed to update trainer status: ${error}`)
+    },
+  })
+
+  const columns: ColumnDef<Trainer>[] = [
+    {
+      accessorKey: 'full_name',
+      header: 'Name',
+    },
+    {
+      accessorKey: 'email',
+      header: 'Email',
+    },
+    {
+      accessorKey: 'trial_end',
+      header: 'Trial Status',
+      cell: ({ row }) => {
+        const trialEnd = row.original.trial_end ? new Date(row.original.trial_end) : null
+        const today = new Date()
+        const isActive = trialEnd && trialEnd > today
+        const daysLeft = trialEnd
+          ? Math.ceil((trialEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+          : 0
+
+        return (
+          <Badge variant={isActive ? 'success' : 'destructive'}>
+            {isActive ? `${daysLeft} days left` : 'Expired'}
+          </Badge>
+        )
+      },
+    },
+    {
+      accessorKey: 'created_at',
+      header: 'Joined',
+      cell: ({ row }) => {
+        return row.original.created_at
+          ? format(new Date(row.original.created_at), 'MMM dd, yyyy')
+          : 'N/A'
+      },
+    },
+    {
+      accessorKey: 'is_active',
+      header: 'Status',
+      cell: ({ row }) => {
+        return (
+          <Badge variant={row.original.is_active ? 'success' : 'destructive'}>
+            {row.original.is_active ? 'Active' : 'Inactive'}
+          </Badge>
+        )
+      },
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => {
+        const isProcessing = 
+          toggleTrainerStatus.isPending && toggleTrainerStatus.variables?.id === row.original.id ||
+          deleteTrainer.isPending && deleteTrainer.variables?.id === row.original.id
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MoreHorizontal className="h-4 w-4" />
+                )}
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  toggleTrainerStatus.mutate({
+                    id: row.original.id,
+                    currentStatus: row.original.is_active,
+                  })
+                }
+                disabled={isProcessing}
+              >
+                {row.original.is_active ? 'Deactivate' : 'Activate'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-red-600"
+                onClick={() => {
+                  if (confirm('Are you sure you want to delete this trainer?')) {
+                    deleteTrainer.mutate({ id: row.original.id })
+                  }
+                }}
+                disabled={isProcessing}
+              >
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    },
+  ]
+
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onSortingChange: setSorting,
+    getSortedRowModel: getSortedRowModel(),
+    onColumnFiltersChange: setColumnFilters,
+    getFilteredRowModel: getFilteredRowModel(),
+    state: {
+      sorting,
+      columnFilters,
+    },
+  })
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between">
+        <h1 className="text-2xl font-bold">Trainer Management</h1>
+        <Button>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Trainer
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Trainers</CardTitle>
+          <div className="flex items-center">
+            <Search className="h-4 w-4 mr-2 text-muted-foreground" />
+            <Input
+              placeholder="Filter trainers..."
+              value={(table.getColumn('full_name')?.getFilterValue() as string) ?? ''}
+              onChange={(e) => table.getColumn('full_name')?.setFilterValue(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                    </TableCell>
+                  </TableRow>
+                ) : table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && 'selected'}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="h-24 text-center">
+                      No trainers found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex items-center justify-end space-x-2 py-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              Next
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

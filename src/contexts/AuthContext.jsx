@@ -22,12 +22,13 @@ export const AuthProvider = ({ children }) => {
     const getSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        console.log('🔍 Initial session check:', !!session);
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user);
         }
       } catch (error) {
-        console.error('Error getting session:', error);
+        console.error('❌ Error getting session:', error);
       } finally {
         setLoading(false);
       }
@@ -38,6 +39,7 @@ export const AuthProvider = ({ children }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('🔄 Auth state change:', event, !!session);
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user);

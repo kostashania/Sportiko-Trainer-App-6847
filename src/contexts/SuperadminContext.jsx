@@ -56,45 +56,30 @@ export const SuperadminProvider = ({ children }) => {
         return;
       }
 
-      // Check if user exists in superadmins table
-      console.log('🔍 Checking superadmins table...');
-      const { data, error } = await supabase
-        .from('superadmins')
-        .select('id')
-        .eq('id', user.id)
-        .single();
+      // Use the safe function to check superadmin status
+      try {
+        const { data, error } = await supabase.rpc('is_superadmin_safe', {
+          user_id: user.id
+        });
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('❌ Error checking superadmin status:', error);
-        // Don't throw, just log and continue
-      }
-      
-      const isSuper = !!data;
-      console.log('🎯 Superadmin check result:', isSuper, data);
-      setIsSuperadmin(isSuper);
-
-      // If not found and this looks like a superadmin email, try to create the record
-      if (!isSuper && user.email === 'superadmin_pt@sportiko.eu') {
-        console.log('🔧 Attempting to create superadmin record...');
-        try {
-          const { error: insertError } = await supabase
-            .from('superadmins')
-            .insert([{
-              id: user.id,
-              email: user.email,
-              full_name: user.user_metadata?.full_name || 'Super Admin'
-            }]);
-
-          if (!insertError) {
-            console.log('✅ Superadmin record created successfully');
-            setIsSuperadmin(true);
-            toast.success('Superadmin access granted!');
-          } else {
-            console.error('❌ Failed to create superadmin record:', insertError);
-          }
-        } catch (createError) {
-          console.error('❌ Exception creating superadmin record:', createError);
+        if (error) {
+          console.error('❌ Error checking superadmin status:', error);
+          // Fall back to email/ID check
+          setIsSuperadmin(
+            user.email === 'superadmin_pt@sportiko.eu' || 
+            user.id === 'be9c6165-808a-4335-b90e-22f6d20328bf'
+          );
+        } else {
+          console.log('🎯 Superadmin check result:', data);
+          setIsSuperadmin(!!data);
         }
+      } catch (functionError) {
+        console.error('❌ Superadmin function not available:', functionError);
+        // Fall back to email/ID check
+        setIsSuperadmin(
+          user.email === 'superadmin_pt@sportiko.eu' || 
+          user.id === 'be9c6165-808a-4335-b90e-22f6d20328bf'
+        );
       }
     } catch (error) {
       console.error('❌ Exception in checkSuperadminStatus:', error);

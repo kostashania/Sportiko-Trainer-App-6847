@@ -18,31 +18,30 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   },
   global: {
     headers: {
-      'X-Client-Info': 'sportiko-trainer@1.0.0',
-      'Accept': 'application/json' // Always include Accept header for all requests
+      'X-Client-Info': 'sportiko-trainer@1.0.0'
     }
   }
 });
 
-// Don't expose service role key in browser - remove this
-export const supabaseAdmin = null;
-
 // Connection status checker
 export const checkSupabaseConnection = async () => {
   try {
-    // Use a simple query to check connection
+    console.log('🔍 Testing Supabase connection...');
+    
+    // Test with a simple query that doesn't require authentication
     const { data, error } = await supabase
       .from('trainers')
-      .select('count')
-      .limit(1);
+      .select('count', { count: 'exact', head: true });
 
     if (error) {
-      console.error('Supabase connection error:', error);
+      console.error('❌ Supabase connection error:', error);
       return { connected: false, error: error.message };
     }
+    
+    console.log('✅ Supabase connection successful');
     return { connected: true, error: null };
   } catch (error) {
-    console.error('Supabase connection check failed:', error);
+    console.error('❌ Supabase connection check failed:', error);
     return { connected: false, error: error.message };
   }
 };

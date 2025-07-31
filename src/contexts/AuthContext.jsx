@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, demoAuth } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext({});
@@ -18,27 +18,7 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
-    // Check for demo user in localStorage first
-    const demoUser = localStorage.getItem('sportiko_user');
-    if (demoUser) {
-      try {
-        const parsedUser = JSON.parse(demoUser);
-        setUser(parsedUser);
-        
-        // Get the full profile for the demo user
-        const demoProfile = demoAuth.getDemoUser(parsedUser.email);
-        if (demoProfile) {
-          setProfile(demoProfile);
-          setLoading(false);
-          return;
-        }
-      } catch (e) {
-        console.error('Error parsing stored user:', e);
-        localStorage.removeItem('sportiko_user');
-      }
-    }
-
-    // Get initial session from Supabase if no demo user
+    // Get initial session from Supabase
     const getSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -74,16 +54,6 @@ export const AuthProvider = ({ children }) => {
   const fetchProfile = async (user) => {
     try {
       console.log('🔍 Fetching profile for user:', user.email, user.id);
-
-      // For demo users, use the demo profile
-      if (demoAuth.isDemoUser(user.email)) {
-        const demoProfile = demoAuth.getDemoUser(user.email);
-        if (demoProfile) {
-          console.log('📱 Using demo profile:', demoProfile);
-          setProfile(demoProfile);
-          return;
-        }
-      }
 
       // Special case for superadmin - check by email first
       if (user.email === 'superadmin_pt@sportiko.eu') {
@@ -171,7 +141,6 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.warn('⚠️ No profile found for user:', user.email);
-      
       // Create a fallback profile with basic information
       setProfile({
         id: user.id,
@@ -182,8 +151,7 @@ export const AuthProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('❌ Error fetching profile:', error);
-      
-      // Create a fallback profile with basic information
+      // Create a fallback profile with basic information if user exists
       if (user) {
         setProfile({
           id: user.id,
@@ -198,33 +166,18 @@ export const AuthProvider = ({ children }) => {
 
   const signIn = async (email, password) => {
     try {
-      // Check if this is a demo user
-      if (demoAuth.isDemoUser(email)) {
-        const { data, error } = demoAuth.signIn(email, password);
-        if (error) {
-          throw error;
-        }
-
-        const demoProfile = demoAuth.getDemoUser(email);
-        setUser(data.user);
-        setProfile(demoProfile);
-        localStorage.setItem('sportiko_user', JSON.stringify(data.user));
-        return { data, error: null };
-      }
-
-      // Otherwise, try actual Supabase login
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
-
+      
       // Fetch profile after successful login
       if (data.user) {
         await fetchProfile(data.user);
       }
-
+      
       return { data, error: null };
     } catch (error) {
       console.error('Login error:', error);
@@ -234,27 +187,16 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     try {
-      // Check if we're using a demo user
-      const demoUser = localStorage.getItem('sportiko_user');
-      if (demoUser) {
-        localStorage.removeItem('sportiko_user');
-        setUser(null);
-        setProfile(null);
-        return { error: null };
-      }
-
-      // Otherwise use Supabase signOut
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
       setUser(null);
       setProfile(null);
+      
       return { error: null };
     } catch (error) {
       console.error('Sign out error:', error);
-      
       // Even if there's an error, clear the local state
-      localStorage.removeItem('sportiko_user');
       setUser(null);
       setProfile(null);
       return { error };
@@ -263,17 +205,13 @@ export const AuthProvider = ({ children }) => {
 
   const signUp = async (email, password, fullName) => {
     try {
-      // For demo purposes, we can simulate signup success for demo users
-      if (demoAuth.isDemoUser(email)) {
-        const demoProfile = demoAuth.getDemoUser(email);
-        return { data: { user: demoProfile }, error: null };
-      }
-
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName }
+          data: {
+            full_name: fullName
+          }
         }
       });
 

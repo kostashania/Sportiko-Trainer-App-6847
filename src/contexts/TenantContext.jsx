@@ -30,19 +30,10 @@ export const TenantProvider = ({ children }) => {
         return;
       }
 
-      // For demo trainer user
-      if (user.id === REAL_USERS.TRAINER) {
-        const schema = getTenantSchema(user.id);
-        console.log('📱 Demo trainer detected, schema:', schema);
-        setTenantSchema(schema);
-        setTenantReady(true);
-        return;
-      }
-
-      // For real trainers
+      // For trainers
       if (profile.role === 'trainer') {
         const schema = getTenantSchema(user.id);
-        console.log('🏃 Real trainer detected, schema:', schema);
+        console.log('🏃 Trainer detected, schema:', schema);
         setTenantSchema(schema);
         setTenantReady(true);
         return;
@@ -78,21 +69,6 @@ export const TenantProvider = ({ children }) => {
     if (!tenantSchema) {
       console.error('❌ Tenant schema not available for table:', tableName);
       throw new Error('Tenant schema not available');
-    }
-
-    // For demo trainer user
-    if (user?.id === REAL_USERS.TRAINER) {
-      // Try to use real DB first
-      try {
-        // Add proper headers to avoid 406 errors
-        const query = supabase.from(`${tenantSchema}.${tableName}`);
-        return query;
-      } catch (error) {
-        console.error(`Error querying ${tenantSchema}.${tableName}:`, error);
-        toast.error(`Could not access ${tableName}. Schema may not exist.`);
-        // Return mock functions to prevent app crashes
-        return getMockTableFunctions(tableName);
-      }
     }
 
     // For real users, use Supabase
@@ -157,24 +133,30 @@ export const TenantProvider = ({ children }) => {
       }),
       insert: (data) => ({
         select: (cols = '*') => Promise.resolve({
-          data: Array.isArray(data)
-            ? data.map((item, index) => ({
-                id: `mock-${Date.now()}-${index}`,
-                ...item,
-                created_at: new Date().toISOString()
-              }))
-            : [{ id: `mock-${Date.now()}`, ...data, created_at: new Date().toISOString() }],
+          data: Array.isArray(data) ? data.map((item, index) => ({
+            id: `mock-${Date.now()}-${index}`,
+            ...item,
+            created_at: new Date().toISOString()
+          })) : [{
+            id: `mock-${Date.now()}`,
+            ...data,
+            created_at: new Date().toISOString()
+          }],
           error: null
         }),
         single: () => Promise.resolve({
-          data: { id: `mock-${Date.now()}`, ...data, created_at: new Date().toISOString() },
+          data: {
+            id: `mock-${Date.now()}`,
+            ...data,
+            created_at: new Date().toISOString()
+          },
           error: null
         })
       })
     };
   };
 
-  // Mock data for demo users and superadmins
+  // Mock data for superadmins
   const getMockData = (tableName) => {
     const mockData = {
       players: [
@@ -216,8 +198,16 @@ export const TenantProvider = ({ children }) => {
         }
       ],
       payments: [
-        { id: '1', amount: 50.00, paid: false },
-        { id: '2', amount: 75.00, paid: false }
+        {
+          id: '1',
+          amount: 50.00,
+          paid: false
+        },
+        {
+          id: '2',
+          amount: 75.00,
+          paid: false
+        }
       ],
       trainers: [
         {

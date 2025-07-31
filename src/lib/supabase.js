@@ -79,60 +79,11 @@ export const TRAINER_TABLES = {
   ORDER_ITEMS: 'order_items'
 };
 
-// Real user IDs from the database
+// Real user IDs from the database - these will be fetched from the actual authentication
 export const REAL_USERS = {
   SUPERADMIN: 'be9c6165-808a-4335-b90e-22f6d20328bf',
   TRAINER: 'd45616a4-d90b-4358-b62c-9005f61e3d84',
   PLAYER: '131dc3dc-eccc-4c00-a2fa-8bf408b4d86c'
-};
-
-// Demo auth helper - completely bypass Supabase for demo users
-export const demoAuth = {
-  // Demo users with their profiles
-  users: {
-    'superadmin_pt@sportiko.eu': {
-      id: REAL_USERS.SUPERADMIN,
-      email: 'superadmin_pt@sportiko.eu',
-      role: 'superadmin',
-      full_name: 'Super Admin',
-      trial_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    'trainer_pt@sportiko.eu': {
-      id: REAL_USERS.TRAINER,
-      email: 'trainer_pt@sportiko.eu',
-      role: 'trainer',
-      full_name: 'Test Trainer',
-      trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    'player_pt@sportiko.eu': {
-      id: REAL_USERS.PLAYER,
-      email: 'player_pt@sportiko.eu',
-      role: 'player',
-      full_name: 'Test Player',
-      trainer_id: REAL_USERS.TRAINER,
-      trial_end: null
-    }
-  },
-
-  // Check if email is for a demo user
-  isDemoUser: (email) => {
-    return !!demoAuth.users[email];
-  },
-
-  // Get demo user profile
-  getDemoUser: (email) => {
-    return demoAuth.users[email] || null;
-  },
-
-  // Login with demo credentials
-  signIn: (email, password) => {
-    // For demo purposes, any password works for demo users
-    if (demoAuth.isDemoUser(email)) {
-      const user = demoAuth.getDemoUser(email);
-      return { data: { user }, error: null };
-    }
-    return { data: null, error: { message: 'Invalid credentials' } };
-  }
 };
 
 // Function to create a tenant schema for a trainer (using database function)
@@ -143,7 +94,7 @@ export const createTenantSchema = async (trainerId) => {
     const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
     });
-    
+
     if (error) {
       console.error('Error calling create_basic_tenant_schema:', error);
       throw error;
@@ -177,7 +128,7 @@ export const dbConfig = {
     try {
       const stored = localStorage.getItem('sportiko_db_config');
       if (!stored) return null;
-      
+
       const config = JSON.parse(stored);
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {

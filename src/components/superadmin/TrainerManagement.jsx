@@ -39,10 +39,15 @@ const TrainerManagement = () => {
     try {
       console.log('🔍 Checking authentication status...');
       
-      // Check if we have a user from context (works for both demo and real users)
+      // Check if we have a user from context
       if (!user) {
         console.warn('⚠️ No user found in auth context');
-        toast.error('No active session. Please log in again.');
+        setAuthDebugInfo({
+          user_email: 'No user',
+          session_info: 'No active session',
+          can_delete_trainers: false,
+          error: 'No user found in auth context'
+        });
         return;
       }
 
@@ -52,61 +57,57 @@ const TrainerManagement = () => {
         profile: profile 
       });
 
-      // For demo users, we don't need to check Supabase session
-      const isDemoUser = user.email === 'superadmin_pt@sportiko.eu';
-      
-      if (isDemoUser) {
-        console.log('📱 Demo user detected, skipping Supabase session check');
+      // Check Supabase session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('📱 Session check:', { session: !!session, error: sessionError });
+
+      if (!session) {
+        console.warn('⚠️ No active Supabase session found');
         setAuthDebugInfo({
           user_email: user.email,
-          session_info: 'Demo session (local storage)',
-          can_delete_trainers: true,
-          is_demo: true
+          session_info: 'No Supabase session',
+          can_delete_trainers: false,
+          error: 'No active Supabase session'
         });
         return;
       }
 
-      // For real users, check Supabase session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log('📱 Supabase session check:', { session: !!session, error: sessionError });
-
-      if (!session) {
-        console.warn('⚠️ No active Supabase session found');
-        toast.error('No active session. Please log in again.');
-        return;
-      }
-
-      // Debug user authentication
-      const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
-      if (debugError) {
-        console.error('❌ Debug auth error:', debugError);
-      } else {
-        console.log('🐛 Auth debug info:', debugData);
-        setAuthDebugInfo(debugData[0]);
-        
-        if (debugData[0] && !debugData[0].can_delete_trainers) {
-          console.warn('⚠️ User cannot delete trainers');
-          // Try to ensure superadmin record exists
-          try {
-            const { error: ensureError } = await supabase.rpc('ensure_superadmin_record');
-            if (ensureError) {
-              console.error('❌ Failed to ensure superadmin record:', ensureError);
-            } else {
-              console.log('✅ Superadmin record ensured, rechecking...');
-              // Recheck after ensuring record
-              const { data: recheckData } = await supabase.rpc('debug_user_auth');
-              if (recheckData && recheckData[0]) {
-                setAuthDebugInfo(recheckData[0]);
-                console.log('🔄 Updated auth info:', recheckData[0]);
-              }
-            }
-          } catch (ensureError) {
-            console.error('❌ Exception ensuring superadmin record:', ensureError);
-          }
+      // For authenticated users, check database permissions
+      try {
+        const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
+        if (debugError) {
+          console.error('❌ Debug auth error:', debugError);
+          setAuthDebugInfo({
+            user_email: user.email,
+            session_info: 'Supabase session active',
+            can_delete_trainers: false,
+            error: debugError.message
+          });
+        } else {
+          console.log('🐛 Auth debug info:', debugData);
+          setAuthDebugInfo(debugData[0] || {
+            user_email: user.email,
+            session_info: 'Supabase session active',
+            can_delete_trainers: isSuperadmin || profile?.role === 'superadmin',
+          });
         }
+      } catch (dbError) {
+        console.error('❌ Database check failed:', dbError);
+        setAuthDebugInfo({
+          user_email: user.email,
+          session_info: 'Supabase session active',
+          can_delete_trainers: isSuperadmin || profile?.role === 'superadmin',
+          error: 'Database check failed'
+        });
       }
     } catch (error) {
       console.error('❌ Authentication check failed:', error);
+      setAuthDebugInfo({
+        user_email: user?.email || 'Unknown',
+        session_info: 'Error checking session',
+        can_delete_trainers: false,
+        error: error.message
+      });
     }
   };
 
@@ -136,7 +137,23 @@ const TrainerManagement = () => {
   };
 
   const debugAuth = async () => {
+    console.log('🔧 Manual debug auth triggered');
+    
+    // For real users, check if they have an active session
+    if (!user) {
+      toast.error('No active session. Please log in again.');
+      return;
+    }
+
+    // Check authentication status
     await checkAuthenticationStatus();
+    
+    // Show appropriate message based on auth status
+    if (authDebugInfo?.can_delete_trainers) {
+      toast.success('Authentication verified successfully!');
+    } else {
+      toast.warning('Limited access - some operations may not work');
+    }
   };
 
   const handleDeleteTrainer = async (trainerId) => {
@@ -151,7 +168,7 @@ const TrainerManagement = () => {
       // Show loading toast
       toast.loading('Deleting trainer...', { id: 'delete-trainer' });
 
-      // Check authentication first - use context instead of Supabase session for demo users
+      // Check authentication first
       if (!user) {
         throw new Error('No active session - please log in again');
       }
@@ -159,27 +176,15 @@ const TrainerManagement = () => {
       console.log('👤 Authenticated as:', user.email, user.id);
 
       // Check if user is superadmin
-      if (!isSuperadmin && profile?.role !== 'superadmin') {
+      const hasPermission = isSuperadmin || profile?.role === 'superadmin';
+
+      if (!hasPermission) {
         throw new Error('You do not have permission to delete trainers. Please ensure you are logged in as a superadmin.');
       }
 
-      // For demo users, use direct delete. For real users, try admin function first
-      const isDemoUser = user.email === 'superadmin_pt@sportiko.eu';
-      
-      if (isDemoUser) {
-        console.log('🔧 Demo user - using direct delete...');
-        const { error: directError } = await supabase
-          .from('trainers')
-          .delete()
-          .eq('id', trainerId);
-
-        if (directError) {
-          console.error('❌ Direct delete failed:', directError);
-          throw new Error(`Deletion failed: ${directError.message}`);
-        }
-      } else {
-        // Try the admin delete function first for real users
-        console.log('🔧 Using admin delete function...');
+      // Try the admin delete function first for real users
+      console.log('🔧 Using admin delete function...');
+      try {
         const { data: deleteResult, error: deleteError } = await supabase.rpc('admin_delete_trainer', {
           trainer_id: trainerId
         });
@@ -197,6 +202,18 @@ const TrainerManagement = () => {
             console.error('❌ Direct delete failed:', directError);
             throw new Error(`Deletion failed: ${directError.message}`);
           }
+        }
+      } catch (functionError) {
+        console.error('❌ Admin function not available:', functionError);
+        // Fall back to direct delete
+        const { error: directError } = await supabase
+          .from('trainers')
+          .delete()
+          .eq('id', trainerId);
+
+        if (directError) {
+          console.error('❌ Direct delete failed:', directError);
+          throw new Error(`Deletion failed: ${directError.message}`);
         }
       }
 
@@ -562,38 +579,30 @@ const TrainerManagement = () => {
       {/* Authentication Status */}
       {authDebugInfo && (
         <div className={`p-4 rounded-lg border ${
-          authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
-            ? 'bg-green-50 border-green-200'
-            : 'bg-yellow-50 border-yellow-200'
+          authDebugInfo.can_delete_trainers ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
         }`}>
           <div className="flex items-center space-x-2">
             <SafeIcon 
-              icon={authDebugInfo.can_delete_trainers || authDebugInfo.is_demo ? FiCheck : FiAlertTriangle} 
+              icon={authDebugInfo.can_delete_trainers ? FiCheck : FiAlertTriangle} 
               className={`w-5 h-5 ${
-                authDebugInfo.can_delete_trainers || authDebugInfo.is_demo 
-                  ? 'text-green-600' 
-                  : 'text-yellow-600'
+                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
               }`} 
             />
             <div className="flex-1">
               <p className={`text-sm font-medium ${
-                authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
-                  ? 'text-green-800'
-                  : 'text-yellow-800'
+                authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'
               }`}>
-                {authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
+                {authDebugInfo.can_delete_trainers
                   ? 'Superadmin access confirmed'
                   : 'Limited access - some operations may not work'
                 }
               </p>
               <p className={`text-xs ${
-                authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
-                  ? 'text-green-600'
-                  : 'text-yellow-600'
+                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
               }`}>
-                User: {user?.email} | Session: {authDebugInfo.session_info} | 
-                Can delete: {authDebugInfo.can_delete_trainers || authDebugInfo.is_demo ? 'Yes' : 'No'}
-                {authDebugInfo.is_demo && ' (Demo Mode)'}
+                User: {authDebugInfo.user_email} | Session: {authDebugInfo.session_info} | 
+                Can delete: {authDebugInfo.can_delete_trainers ? 'Yes' : 'No'}
+                {authDebugInfo.error && ` | Error: ${authDebugInfo.error}`}
               </p>
             </div>
           </div>
@@ -811,10 +820,10 @@ const TrainerManagement = () => {
 
                           <button
                             onClick={() => handleDeleteTrainer(trainer.id)}
-                            disabled={isProcessingThisTrainer || (!authDebugInfo?.can_delete_trainers && !authDebugInfo?.is_demo)}
+                            disabled={isProcessingThisTrainer || !authDebugInfo?.can_delete_trainers}
                             className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
                             title={
-                              authDebugInfo?.can_delete_trainers || authDebugInfo?.is_demo
+                              authDebugInfo?.can_delete_trainers
                                 ? "Delete Trainer"
                                 : "Insufficient permissions"
                             }

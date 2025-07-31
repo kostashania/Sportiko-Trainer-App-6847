@@ -385,7 +385,8 @@ const TrainerManagement = () => {
 
       // Store current session to restore it later
       const currentSession = await supabase.auth.getSession();
-      console.log('💾 Storing current session for restoration');
+      const currentUser = currentSession.data.session?.user;
+      console.log('💾 Current session user:', currentUser?.email);
 
       if (editingTrainer) {
         // Update existing trainer
@@ -411,51 +412,96 @@ const TrainerManagement = () => {
         console.log('✅ Trainer updated successfully');
 
       } else {
-        // Create new trainer WITHOUT creating auth user
-        console.log('➕ Creating new trainer record only (no auth user)');
-        const newTrainerId = crypto.randomUUID();
-        const newTrialEnd = new Date();
-        newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
-
+        // Create new trainer WITH auth user
+        console.log('➕ Creating new trainer with auth user');
+        
         try {
-          // Create trainer record directly (no auth user creation)
+          // Step 1: Create auth user using admin API
+          console.log('👤 Creating auth user...');
+          const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+            email: newTrainer.email,
+            password: newTrainer.password,
+            user_metadata: {
+              full_name: newTrainer.full_name
+            },
+            email_confirm: true // Auto-confirm email for admin-created users
+          });
+
+          if (authError) {
+            console.error('❌ Auth user creation error:', authError);
+            throw new Error(`Failed to create auth user: ${authError.message}`);
+          }
+
+          console.log('✅ Auth user created successfully:', authData.user.id);
+          const newUserId = authData.user.id;
+
+          // Step 2: Create trainer record
           console.log('👨‍🏫 Creating trainer record...');
-          const { data: trainerData, error: trainerError } = await supabase
-            .from('trainers')
-            .insert([{
-              id: newTrainerId,
-              email: newTrainer.email,
-              full_name: newTrainer.full_name,
-              trial_end: newTrialEnd.toISOString(),
-              is_active: true
-            }])
-            .select()
-            .single();
+          const newTrialEnd = new Date();
+          newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
+
+          // Use the admin function to create trainer record
+          const { data: trainerData, error: trainerError } = await supabase.rpc('admin_create_trainer', {
+            trainer_id: newUserId,
+            trainer_email: newTrainer.email,
+            trainer_name: newTrainer.full_name,
+            trial_end_date: newTrialEnd.toISOString()
+          });
 
           if (trainerError) {
             console.error('❌ Trainer creation error:', trainerError);
-            throw trainerError;
+            
+            // If admin function fails, try direct insert
+            console.log('🔄 Trying direct trainer insert...');
+            const { data: directTrainerData, error: directError } = await supabase
+              .from('trainers')
+              .insert([{
+                id: newUserId,
+                email: newTrainer.email,
+                full_name: newTrainer.full_name,
+                trial_end: newTrialEnd.toISOString(),
+                is_active: true
+              }])
+              .select()
+              .single();
+
+            if (directError) {
+              console.error('❌ Direct trainer creation error:', directError);
+              throw new Error(`Failed to create trainer record: ${directError.message}`);
+            }
+
+            console.log('✅ Trainer created via direct insert:', directTrainerData);
+            
+            // Add to local state
+            setTrainers([directTrainerData, ...trainers]);
+
+          } else {
+            console.log('✅ Trainer created via admin function:', trainerData);
+            
+            // Refresh trainers list to get the new record
+            await loadTrainers();
           }
 
-          console.log('✅ Trainer created successfully:', trainerData);
-
-          // Add to local state
-          setTrainers([trainerData, ...trainers]);
-
-          // Try to create tenant schema automatically
+          // Step 3: Create tenant schema
           try {
-            await createTenantSchemaForTrainer(trainerData.id);
+            await createTenantSchemaForTrainer(newUserId);
             toast.success('Trainer and schema created successfully!');
           } catch (schemaError) {
             console.error('⚠️ Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
           }
 
-          // IMPORTANT: Restore the original session to prevent logout
-          if (currentSession.data.session) {
-            console.log('🔄 Restoring original session...');
-            await supabase.auth.setSession(currentSession.data.session);
-            console.log('✅ Session restored successfully');
+          // IMPORTANT: Restore the original session
+          if (currentUser) {
+            console.log('🔄 Restoring original session for:', currentUser.email);
+            // Sign back in as the original user
+            const { error: restoreError } = await supabase.auth.setSession(currentSession.data.session);
+            if (restoreError) {
+              console.error('❌ Session restore error:', restoreError);
+              toast.warning('Session may have changed. Please refresh if needed.');
+            } else {
+              console.log('✅ Session restored successfully');
+            }
           }
 
         } catch (error) {
@@ -851,7 +897,7 @@ const TrainerManagement = () => {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password (for future login)
+                      Password
                     </label>
                     <input
                       type="text"
@@ -862,7 +908,7 @@ const TrainerManagement = () => {
                       placeholder="Default password"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Note: Auth user will need to be created separately
+                      Trainer will be able to login with this password
                     </p>
                   </div>
                   
@@ -898,9 +944,9 @@ const TrainerManagement = () => {
                   }`}
                 >
                   {processingAction === 'new' ? (
-                    'Saving...'
+                    'Creating...'
                   ) : (
-                    editingTrainer ? 'Update Trainer' : 'Add Trainer'
+                    editingTrainer ? 'Update Trainer' : 'Create Trainer'
                   )}
                 </button>
               </div>

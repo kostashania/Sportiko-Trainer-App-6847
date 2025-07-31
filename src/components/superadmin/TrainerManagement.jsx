@@ -383,11 +383,6 @@ const TrainerManagement = () => {
         return;
       }
 
-      // Store current session to restore it later
-      const currentSession = await supabase.auth.getSession();
-      const currentUser = currentSession.data.session?.user;
-      console.log('💾 Current session user:', currentUser?.email);
-
       if (editingTrainer) {
         // Update existing trainer
         console.log('📝 Updating existing trainer:', editingTrainer.id);
@@ -412,97 +407,48 @@ const TrainerManagement = () => {
         console.log('✅ Trainer updated successfully');
 
       } else {
-        // Create new trainer WITH auth user
-        console.log('➕ Creating new trainer with auth user');
+        // Create new trainer using database function
+        console.log('➕ Creating new trainer using simplified database function');
         
         try {
-          // Step 1: Create auth user using admin API
-          console.log('👤 Creating auth user...');
-          const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-            email: newTrainer.email,
-            password: newTrainer.password,
-            user_metadata: {
-              full_name: newTrainer.full_name
-            },
-            email_confirm: true // Auto-confirm email for admin-created users
-          });
-
-          if (authError) {
-            console.error('❌ Auth user creation error:', authError);
-            throw new Error(`Failed to create auth user: ${authError.message}`);
-          }
-
-          console.log('✅ Auth user created successfully:', authData.user.id);
-          const newUserId = authData.user.id;
-
-          // Step 2: Create trainer record
-          console.log('👨‍🏫 Creating trainer record...');
-          const newTrialEnd = new Date();
-          newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
-
-          // Use the admin function to create trainer record
-          const { data: trainerData, error: trainerError } = await supabase.rpc('admin_create_trainer', {
-            trainer_id: newUserId,
+          // Use the simplified function that creates trainer record only
+          console.log('🔧 Using create_trainer_simple function...');
+          const { data: trainerData, error: trainerError } = await supabase.rpc('create_trainer_simple', {
             trainer_email: newTrainer.email,
             trainer_name: newTrainer.full_name,
-            trial_end_date: newTrialEnd.toISOString()
+            trial_days: parseInt(newTrainer.trial_days)
           });
 
           if (trainerError) {
             console.error('❌ Trainer creation error:', trainerError);
-            
-            // If admin function fails, try direct insert
-            console.log('🔄 Trying direct trainer insert...');
-            const { data: directTrainerData, error: directError } = await supabase
-              .from('trainers')
-              .insert([{
-                id: newUserId,
-                email: newTrainer.email,
-                full_name: newTrainer.full_name,
-                trial_end: newTrialEnd.toISOString(),
-                is_active: true
-              }])
-              .select()
-              .single();
+            throw new Error(`Failed to create trainer: ${trainerError.message}`);
+          }
 
-            if (directError) {
-              console.error('❌ Direct trainer creation error:', directError);
-              throw new Error(`Failed to create trainer record: ${directError.message}`);
+          console.log('✅ Trainer created successfully:', trainerData);
+
+          // Refresh trainers list to get the new record
+          await loadTrainers();
+
+          // Create tenant schema
+          if (trainerData && trainerData.length > 0) {
+            const newTrainerId = trainerData[0].id;
+            try {
+              await createTenantSchemaForTrainer(newTrainerId);
+              toast.success('Trainer and schema created successfully!');
+            } catch (schemaError) {
+              console.error('⚠️ Schema creation failed:', schemaError);
+              toast.success('Trainer created successfully (schema creation pending)');
             }
-
-            console.log('✅ Trainer created via direct insert:', directTrainerData);
-            
-            // Add to local state
-            setTrainers([directTrainerData, ...trainers]);
-
           } else {
-            console.log('✅ Trainer created via admin function:', trainerData);
-            
-            // Refresh trainers list to get the new record
-            await loadTrainers();
+            toast.success('Trainer created successfully!');
           }
 
-          // Step 3: Create tenant schema
-          try {
-            await createTenantSchemaForTrainer(newUserId);
-            toast.success('Trainer and schema created successfully!');
-          } catch (schemaError) {
-            console.error('⚠️ Schema creation failed:', schemaError);
-            toast.success('Trainer created successfully (schema creation pending)');
-          }
-
-          // IMPORTANT: Restore the original session
-          if (currentUser) {
-            console.log('🔄 Restoring original session for:', currentUser.email);
-            // Sign back in as the original user
-            const { error: restoreError } = await supabase.auth.setSession(currentSession.data.session);
-            if (restoreError) {
-              console.error('❌ Session restore error:', restoreError);
-              toast.warning('Session may have changed. Please refresh if needed.');
-            } else {
-              console.log('✅ Session restored successfully');
-            }
-          }
+          // Show instructions for the trainer to create their auth account
+          toast.success(
+            `Trainer record created! 
+            The trainer can now register at your app with email: ${newTrainer.email}`,
+            { duration: 8000 }
+          );
 
         } catch (error) {
           console.error('❌ Error creating trainer:', error);
@@ -629,6 +575,20 @@ const TrainerManagement = () => {
           </div>
         </div>
       )}
+
+      {/* Information Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start space-x-3">
+          <SafeIcon icon={FiUsers} className="w-5 h-5 text-blue-600 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-medium text-blue-800">How Trainer Creation Works</h4>
+            <p className="text-sm text-blue-700 mt-1">
+              When you create a trainer record, they will need to register their own account using the same email address. 
+              The system will automatically link their auth account to the trainer record you create here.
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -895,20 +855,10 @@ const TrainerManagement = () => {
               
               {!editingTrainer && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password
-                    </label>
-                    <input
-                      type="text"
-                      name="password"
-                      value={newTrainer.password}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Default password"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Trainer will be able to login with this password
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Note:</strong> The trainer will need to register their own account using this email address. 
+                      The system will automatically link their account to this trainer record.
                     </p>
                   </div>
                   

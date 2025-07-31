@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { supabase, getTenantSchema, SCHEMAS, REAL_USERS } from '../lib/supabase';
+import { supabase, getTenantSchema, SCHEMAS, REAL_USERS, ensureTenantSchema } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const TenantContext = createContext({});
@@ -21,7 +21,15 @@ export const TenantProvider = ({ children }) => {
   useEffect(() => {
     if (user && profile) {
       console.log('🏗️ Setting up tenant context for:', profile.role, user.email);
+      setupTenantContext();
+    } else {
+      setTenantSchema(null);
+      setTenantReady(false);
+    }
+  }, [user, profile]);
 
+  const setupTenantContext = async () => {
+    try {
       // For superadmins, no specific tenant schema is needed but mark as ready
       if (profile.role === 'superadmin') {
         console.log('👑 Superadmin detected - no tenant schema needed');
@@ -34,8 +42,18 @@ export const TenantProvider = ({ children }) => {
       if (profile.role === 'trainer') {
         const schema = getTenantSchema(user.id);
         console.log('🏃 Trainer detected, schema:', schema);
-        setTenantSchema(schema);
-        setTenantReady(true);
+        
+        // Ensure the schema exists
+        const schemaExists = await ensureTenantSchema(user.id);
+        if (schemaExists) {
+          setTenantSchema(schema);
+          setTenantReady(true);
+        } else {
+          console.error('❌ Failed to ensure tenant schema exists');
+          setTenantSchema(null);
+          setTenantReady(false);
+          toast.error('Failed to set up trainer workspace. Please contact support.');
+        }
         return;
       }
 
@@ -52,11 +70,12 @@ export const TenantProvider = ({ children }) => {
       console.log('❌ No tenant schema available for role:', profile.role);
       setTenantSchema(null);
       setTenantReady(false);
-    } else {
+    } catch (error) {
+      console.error('❌ Error setting up tenant context:', error);
       setTenantSchema(null);
       setTenantReady(false);
     }
-  }, [user, profile]);
+  };
 
   // Helper function to query tenant-specific tables
   const queryTenantTable = (tableName) => {

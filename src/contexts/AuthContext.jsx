@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, ensureTenantSchema } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext({});
@@ -104,6 +104,11 @@ export const AuthProvider = ({ children }) => {
 
         if (!trainerError && trainerData) {
           console.log('🏃 Found in trainers table:', trainerData);
+          
+          // Ensure tenant schema exists for this trainer
+          console.log('🏗️ Ensuring tenant schema exists...');
+          await ensureTenantSchema(user.id);
+          
           setProfile({
             ...trainerData,
             role: 'trainer',
@@ -122,7 +127,7 @@ export const AuthProvider = ({ children }) => {
         console.log('🔍 Checking players_auth table...');
         const { data: playerData, error: playerError } = await supabase
           .from('players_auth')
-          .select('*,trainers:trainer_id(*)')
+          .select('*, trainers:trainer_id(*)')
           .eq('id', user.id)
           .single();
 
@@ -143,6 +148,41 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.warn('⚠️ No profile found for user:', user.email);
+      
+      // If user is the known trainer, create their profile
+      if (user.id === 'd45616a4-d90b-4358-b62c-9005f61e3d84' || user.email === 'trainer_pt@sportiko.eu') {
+        console.log('🏃 Creating profile for known trainer');
+        try {
+          const { data: newTrainer, error: createError } = await supabase
+            .from('trainers')
+            .insert([{
+              id: user.id,
+              email: user.email,
+              full_name: user.user_metadata?.full_name || 'Demo Trainer',
+              trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+              is_active: true
+            }])
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('❌ Error creating trainer profile:', createError);
+          } else {
+            console.log('✅ Created trainer profile:', newTrainer);
+            // Ensure tenant schema exists
+            await ensureTenantSchema(user.id);
+            
+            setProfile({
+              ...newTrainer,
+              role: 'trainer'
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('❌ Exception creating trainer profile:', error);
+        }
+      }
+
       // Create a fallback profile with basic information
       setProfile({
         id: user.id,
@@ -174,12 +214,12 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
-      
+
       // Fetch profile after successful login
       if (data.user) {
         await fetchProfile(data.user);
       }
-      
+
       return { data, error: null };
     } catch (error) {
       console.error('Login error:', error);
@@ -191,10 +231,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      
       setUser(null);
       setProfile(null);
-      
       return { error: null };
     } catch (error) {
       console.error('Sign out error:', error);

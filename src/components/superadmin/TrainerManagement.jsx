@@ -51,11 +51,7 @@ const TrainerManagement = () => {
         return;
       }
 
-      console.log('👤 User from context:', { 
-        id: user.id, 
-        email: user.email, 
-        profile: profile 
-      });
+      console.log('👤 User from context:', { id: user.id, email: user.email, profile: profile });
 
       // Check Supabase session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -75,6 +71,7 @@ const TrainerManagement = () => {
       // For authenticated users, check database permissions
       try {
         const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
+        
         if (debugError) {
           console.error('❌ Debug auth error:', debugError);
           setAuthDebugInfo({
@@ -100,6 +97,7 @@ const TrainerManagement = () => {
           error: 'Database check failed'
         });
       }
+
     } catch (error) {
       console.error('❌ Authentication check failed:', error);
       setAuthDebugInfo({
@@ -147,7 +145,7 @@ const TrainerManagement = () => {
 
     // Check authentication status
     await checkAuthenticationStatus();
-    
+
     // Show appropriate message based on auth status
     if (authDebugInfo?.can_delete_trainers) {
       toast.success('Authentication verified successfully!');
@@ -177,7 +175,6 @@ const TrainerManagement = () => {
 
       // Check if user is superadmin
       const hasPermission = isSuperadmin || profile?.role === 'superadmin';
-
       if (!hasPermission) {
         throw new Error('You do not have permission to delete trainers. Please ensure you are logged in as a superadmin.');
       }
@@ -230,6 +227,7 @@ const TrainerManagement = () => {
 
       // Refresh the list to ensure consistency
       await loadTrainers();
+
     } catch (error) {
       console.error('❌ Exception during trainer deletion:', error);
       toast.error(`Deletion failed: ${error.message}`, { id: 'delete-trainer' });
@@ -262,6 +260,7 @@ const TrainerManagement = () => {
 
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
       console.log('✅ Trainer status updated successfully');
+
     } catch (error) {
       console.error('❌ Error updating trainer status:', error);
       toast.error('Failed to update trainer status: ' + error.message);
@@ -301,6 +300,7 @@ const TrainerManagement = () => {
 
       toast.success('Trial extended by 14 days');
       console.log('✅ Trial extended successfully');
+
     } catch (error) {
       console.error('❌ Error extending trial:', error);
       toast.error('Failed to extend trial: ' + error.message);
@@ -313,7 +313,6 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(`schema-${trainerId}`);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
-
       console.log(`🏗️ Creating tenant schema for trainer ${trainerId}`);
 
       const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
@@ -322,21 +321,25 @@ const TrainerManagement = () => {
 
       if (error) {
         console.error('❌ Error creating tenant schema:', error);
+        
         // Check if policy already exists error
         if (error.code === '42710') {
           toast.success('Schema already exists for this trainer', { id: 'create-schema' });
           return;
         }
+
         // Check if schema already exists
         if (error.code === '42P06') {
           toast.success('Schema already exists', { id: 'create-schema' });
           return;
         }
+
         throw error;
       }
 
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
       console.log('✅ Tenant schema created successfully');
+
     } catch (error) {
       console.error('❌ Error creating tenant schema:', error);
       toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
@@ -402,6 +405,7 @@ const TrainerManagement = () => {
         setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
         toast.success('Trainer updated successfully');
         console.log('✅ Trainer updated successfully');
+
       } else {
         // Create new trainer
         console.log('➕ Creating new trainer');
@@ -410,42 +414,12 @@ const TrainerManagement = () => {
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
         try {
-          // First create auth user - this will likely fail if user exists
-          console.log('🔐 Creating auth user...');
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: newTrainer.email,
-            password: newTrainer.password,
-            options: {
-              data: {
-                full_name: newTrainer.full_name
-              }
-            }
-          });
-
-          if (signUpError) {
-            // Check if user already exists
-            if (signUpError.message.includes('already been registered')) {
-              console.log('👤 User already registered, continuing with trainer creation');
-            } else {
-              console.error('❌ Auth signup failed:', signUpError);
-              throw signUpError;
-            }
-          }
-
-          // Get the user ID - either from signup or try to get from existing user
-          let userId = signUpData?.user?.id;
-          if (!userId) {
-            // Use the generated ID as fallback
-            userId = newTrainerId;
-            console.log('🆔 Using generated ID as fallback:', userId);
-          }
-
-          // Create trainer record
+          // Skip auth user creation and create trainer record directly
           console.log('👨‍🏫 Creating trainer record...');
           const { data: trainerData, error: trainerError } = await supabase
             .from('trainers')
             .insert([{
-              id: userId,
+              id: newTrainerId,
               email: newTrainer.email,
               full_name: newTrainer.full_name,
               trial_end: newTrialEnd.toISOString(),
@@ -472,6 +446,7 @@ const TrainerManagement = () => {
             console.error('⚠️ Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
           }
+
         } catch (error) {
           console.error('❌ Error creating trainer:', error);
           throw error;
@@ -489,6 +464,7 @@ const TrainerManagement = () => {
 
       // Refresh the list
       await loadTrainers();
+
     } catch (error) {
       console.error('❌ Error saving trainer:', error);
       toast.error(error.message || 'Failed to save trainer');
@@ -578,30 +554,18 @@ const TrainerManagement = () => {
 
       {/* Authentication Status */}
       {authDebugInfo && (
-        <div className={`p-4 rounded-lg border ${
-          authDebugInfo.can_delete_trainers ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'
-        }`}>
+        <div className={`p-4 rounded-lg border ${authDebugInfo.can_delete_trainers ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
           <div className="flex items-center space-x-2">
             <SafeIcon 
               icon={authDebugInfo.can_delete_trainers ? FiCheck : FiAlertTriangle} 
-              className={`w-5 h-5 ${
-                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
-              }`} 
+              className={`w-5 h-5 ${authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'}`} 
             />
             <div className="flex-1">
-              <p className={`text-sm font-medium ${
-                authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'
-              }`}>
-                {authDebugInfo.can_delete_trainers
-                  ? 'Superadmin access confirmed'
-                  : 'Limited access - some operations may not work'
-                }
+              <p className={`text-sm font-medium ${authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'}`}>
+                {authDebugInfo.can_delete_trainers ? 'Superadmin access confirmed' : 'Limited access - some operations may not work'}
               </p>
-              <p className={`text-xs ${
-                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
-              }`}>
-                User: {authDebugInfo.user_email} | Session: {authDebugInfo.session_info} | 
-                Can delete: {authDebugInfo.can_delete_trainers ? 'Yes' : 'No'}
+              <p className={`text-xs ${authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'}`}>
+                User: {authDebugInfo.user_email} | Session: {authDebugInfo.session_info} | Can delete: {authDebugInfo.can_delete_trainers ? 'Yes' : 'No'}
                 {authDebugInfo.error && ` | Error: ${authDebugInfo.error}`}
               </p>
             </div>
@@ -733,33 +697,26 @@ const TrainerManagement = () => {
                         <div className="text-sm text-gray-900">{trainer.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            trialStatus.status === 'active'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {trialStatus.status === 'active'
-                            ? `${trialStatus.daysLeft} days left`
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          trialStatus.status === 'active' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {trialStatus.status === 'active' 
+                            ? `${trialStatus.daysLeft} days left` 
                             : 'Expired'
                           }
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {trainer.created_at
-                          ? format(new Date(trainer.created_at), 'MMM dd, yyyy')
-                          : 'N/A'
-                        }
+                        {trainer.created_at ? format(new Date(trainer.created_at), 'MMM dd, yyyy') : 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            trainer.is_active !== false
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          trainer.is_active !== false 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
                           {trainer.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
                       </td>
@@ -822,11 +779,7 @@ const TrainerManagement = () => {
                             onClick={() => handleDeleteTrainer(trainer.id)}
                             disabled={isProcessingThisTrainer || !authDebugInfo?.can_delete_trainers}
                             className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={
-                              authDebugInfo?.can_delete_trainers
-                                ? "Delete Trainer"
-                                : "Insufficient permissions"
-                            }
+                            title={authDebugInfo?.can_delete_trainers ? "Delete Trainer" : "Insufficient permissions"}
                           >
                             {processingAction === `delete-${trainer.id}` ? (
                               <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
@@ -852,7 +805,7 @@ const TrainerManagement = () => {
             <h2 className="text-xl font-semibold mb-4">
               {editingTrainer ? 'Edit Trainer' : 'Add New Trainer'}
             </h2>
-
+            
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -867,7 +820,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's full name"
                 />
               </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
@@ -882,7 +835,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's email"
                 />
               </div>
-
+              
               {!editingTrainer && (
                 <>
                   <div>
@@ -898,7 +851,7 @@ const TrainerManagement = () => {
                       placeholder="Enter password"
                     />
                   </div>
-
+                  
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Trial Days
@@ -915,7 +868,7 @@ const TrainerManagement = () => {
                   </div>
                 </>
               )}
-
+              
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   onClick={() => setShowModal(false)}

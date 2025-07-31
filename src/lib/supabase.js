@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import {createClient} from '@supabase/supabase-js';
 
 // Get credentials from environment variables with fallbacks
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bjelydvroavsqczejpgd.supabase.co';
@@ -20,8 +20,12 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     headers: {
       'X-Client-Info': 'sportiko-trainer@1.0.0',
       'Accept': 'application/json',
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
     }
+  },
+  db: {
+    schema: 'public'
   }
 });
 
@@ -34,12 +38,12 @@ export const checkSupabaseConnection = async () => {
     const { data, error } = await supabase
       .from('trainers')
       .select('count', { count: 'exact', head: true });
-    
+
     if (error) {
       console.error('❌ Supabase connection error:', error);
       return { connected: false, error: error.message };
     }
-    
+
     console.log('✅ Supabase connection successful');
     return { connected: true, error: null };
   } catch (error) {
@@ -96,12 +100,12 @@ export const createTenantSchema = async (trainerId) => {
     const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
     });
-    
+
     if (error) {
       console.error('Error calling create_basic_tenant_schema:', error);
       throw error;
     }
-    
+
     console.log('✅ Schema created successfully:', data);
     return true;
   } catch (error) {
@@ -115,13 +119,13 @@ export const ensureTenantSchema = async (trainerId) => {
   try {
     const schemaName = getTenantSchema(trainerId);
     console.log('🔍 Checking if tenant schema exists:', schemaName);
-    
+
     // Check if schema exists by trying to query a table
     const { data, error } = await supabase
       .from(`${schemaName}.players`)
       .select('id')
       .limit(1);
-    
+
     if (error && error.code === '42P01') {
       // Schema doesn't exist, create it
       console.log('📋 Schema doesn\'t exist, creating it...');
@@ -135,7 +139,7 @@ export const ensureTenantSchema = async (trainerId) => {
       console.error('❌ Error checking schema:', error);
       throw error;
     }
-    
+
     // Schema exists
     console.log('✅ Tenant schema exists');
     return true;
@@ -166,14 +170,14 @@ export const dbConfig = {
     try {
       const stored = localStorage.getItem('sportiko_db_config');
       if (!stored) return null;
-      
+
       const config = JSON.parse(stored);
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem('sportiko_db_config');
         return null;
       }
-      
+
       return config;
     } catch (error) {
       console.error('Error retrieving DB config:', error);

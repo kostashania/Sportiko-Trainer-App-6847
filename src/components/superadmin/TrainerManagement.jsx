@@ -385,27 +385,20 @@ const TrainerManagement = () => {
         console.log('✅ Trainer updated successfully');
 
       } else {
-        // Create new trainer record ONLY (no auth user creation)
-        console.log('➕ Creating new trainer record (database only)');
+        // Create new trainer record using RPC function
+        console.log('➕ Creating new trainer record via RPC');
         
         try {
           // Calculate trial end date
           const newTrialEnd = new Date();
           newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
-          // Create trainer record directly in the database
-          const { data: trainerData, error: trainerError } = await supabase
-            .from('trainers')
-            .insert([{
-              id: crypto.randomUUID(), // Generate a UUID for the trainer record
-              email: newTrainer.email,
-              full_name: newTrainer.full_name,
-              trial_end: newTrialEnd.toISOString(),
-              is_active: true,
-              created_at: new Date().toISOString()
-            }])
-            .select()
-            .single();
+          // Use RPC function to create trainer without FK constraint issues
+          const { data: trainerData, error: trainerError } = await supabase.rpc('create_trainer_simple', {
+            trainer_email: newTrainer.email,
+            trainer_name: newTrainer.full_name,
+            trial_end_date: newTrialEnd.toISOString()
+          });
 
           if (trainerError) {
             console.error('❌ Trainer creation error:', trainerError);

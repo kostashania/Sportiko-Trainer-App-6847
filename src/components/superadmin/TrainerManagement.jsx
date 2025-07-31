@@ -19,7 +19,6 @@ const TrainerManagement = () => {
   const [newTrainer, setNewTrainer] = useState({
     email: '',
     full_name: '',
-    password: 'pass123',
     subscription_plan: 'trial',
     trial_days: 14
   });
@@ -39,7 +38,6 @@ const TrainerManagement = () => {
     try {
       console.log('🔍 Checking authentication status...');
       
-      // Check if we have a user from context
       if (!user) {
         console.warn('⚠️ No user found in auth context');
         setAuthDebugInfo({
@@ -53,7 +51,6 @@ const TrainerManagement = () => {
 
       console.log('👤 User from context:', { id: user.id, email: user.email, profile: profile });
 
-      // Check Supabase session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       console.log('📱 Session check:', { session: !!session, error: sessionError });
 
@@ -137,16 +134,13 @@ const TrainerManagement = () => {
   const debugAuth = async () => {
     console.log('🔧 Manual debug auth triggered');
     
-    // For real users, check if they have an active session
     if (!user) {
       toast.error('No active session. Please log in again.');
       return;
     }
 
-    // Check authentication status
     await checkAuthenticationStatus();
 
-    // Show appropriate message based on auth status
     if (authDebugInfo?.can_delete_trainers) {
       toast.success('Authentication verified successfully!');
     } else {
@@ -163,23 +157,19 @@ const TrainerManagement = () => {
       setProcessingAction(`delete-${trainerId}`);
       console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
 
-      // Show loading toast
       toast.loading('Deleting trainer...', { id: 'delete-trainer' });
 
-      // Check authentication first
       if (!user) {
         throw new Error('No active session - please log in again');
       }
 
       console.log('👤 Authenticated as:', user.email, user.id);
 
-      // Check if user is superadmin
       const hasPermission = isSuperadmin || profile?.role === 'superadmin';
       if (!hasPermission) {
         throw new Error('You do not have permission to delete trainers. Please ensure you are logged in as a superadmin.');
       }
 
-      // Try the admin delete function first for real users
       console.log('🔧 Using admin delete function...');
       try {
         const { data: deleteResult, error: deleteError } = await supabase.rpc('admin_delete_trainer', {
@@ -188,7 +178,6 @@ const TrainerManagement = () => {
 
         if (deleteError) {
           console.error('❌ Admin delete failed:', deleteError);
-          // If admin function fails, try direct delete
           console.log('🔄 Trying direct delete...');
           const { error: directError } = await supabase
             .from('trainers')
@@ -202,7 +191,6 @@ const TrainerManagement = () => {
         }
       } catch (functionError) {
         console.error('❌ Admin function not available:', functionError);
-        // Fall back to direct delete
         const { error: directError } = await supabase
           .from('trainers')
           .delete()
@@ -216,7 +204,6 @@ const TrainerManagement = () => {
 
       console.log('✅ Trainer deletion successful');
 
-      // Update the UI state
       setTrainers(prevTrainers => {
         const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
         console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
@@ -224,8 +211,6 @@ const TrainerManagement = () => {
       });
 
       toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
-
-      // Refresh the list to ensure consistency
       await loadTrainers();
 
     } catch (error) {
@@ -251,7 +236,6 @@ const TrainerManagement = () => {
         throw error;
       }
 
-      // Update local state
       setTrainers(trainers.map(trainer =>
         trainer.id === trainerId
           ? { ...trainer, is_active: !currentStatus }
@@ -277,7 +261,6 @@ const TrainerManagement = () => {
       const currentTrainer = trainers.find(t => t.id === trainerId);
       const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
 
-      // Add 14 days to current trial end date (or current date if no trial)
       const newTrialEnd = new Date(currentTrialEnd);
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
 
@@ -291,7 +274,6 @@ const TrainerManagement = () => {
         throw error;
       }
 
-      // Update local state
       setTrainers(trainers.map(trainer =>
         trainer.id === trainerId
           ? { ...trainer, trial_end: newTrialEnd.toISOString() }
@@ -322,13 +304,11 @@ const TrainerManagement = () => {
       if (error) {
         console.error('❌ Error creating tenant schema:', error);
         
-        // Check if policy already exists error
         if (error.code === '42710') {
           toast.success('Schema already exists for this trainer', { id: 'create-schema' });
           return;
         }
 
-        // Check if schema already exists
         if (error.code === '42P06') {
           toast.success('Schema already exists', { id: 'create-schema' });
           return;
@@ -353,7 +333,6 @@ const TrainerManagement = () => {
     setNewTrainer({
       email: '',
       full_name: '',
-      password: 'pass123',
       subscription_plan: 'trial',
       trial_days: 14
     });
@@ -365,7 +344,6 @@ const TrainerManagement = () => {
     setNewTrainer({
       email: trainer.email,
       full_name: trainer.full_name,
-      password: 'pass123',
       subscription_plan: trainer.subscription_plan || 'trial',
       trial_days: 14
     });
@@ -407,46 +385,50 @@ const TrainerManagement = () => {
         console.log('✅ Trainer updated successfully');
 
       } else {
-        // Create new trainer using database function
-        console.log('➕ Creating new trainer using simplified database function');
+        // Create new trainer record ONLY (no auth user creation)
+        console.log('➕ Creating new trainer record (database only)');
         
         try {
-          // Use the simplified function that creates trainer record only
-          console.log('🔧 Using create_trainer_simple function...');
-          const { data: trainerData, error: trainerError } = await supabase.rpc('create_trainer_simple', {
-            trainer_email: newTrainer.email,
-            trainer_name: newTrainer.full_name,
-            trial_days: parseInt(newTrainer.trial_days)
-          });
+          // Calculate trial end date
+          const newTrialEnd = new Date();
+          newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
+
+          // Create trainer record directly in the database
+          const { data: trainerData, error: trainerError } = await supabase
+            .from('trainers')
+            .insert([{
+              id: crypto.randomUUID(), // Generate a UUID for the trainer record
+              email: newTrainer.email,
+              full_name: newTrainer.full_name,
+              trial_end: newTrialEnd.toISOString(),
+              is_active: true,
+              created_at: new Date().toISOString()
+            }])
+            .select()
+            .single();
 
           if (trainerError) {
             console.error('❌ Trainer creation error:', trainerError);
             throw new Error(`Failed to create trainer: ${trainerError.message}`);
           }
 
-          console.log('✅ Trainer created successfully:', trainerData);
+          console.log('✅ Trainer record created successfully:', trainerData);
 
           // Refresh trainers list to get the new record
           await loadTrainers();
 
           // Create tenant schema
-          if (trainerData && trainerData.length > 0) {
-            const newTrainerId = trainerData[0].id;
-            try {
-              await createTenantSchemaForTrainer(newTrainerId);
-              toast.success('Trainer and schema created successfully!');
-            } catch (schemaError) {
-              console.error('⚠️ Schema creation failed:', schemaError);
-              toast.success('Trainer created successfully (schema creation pending)');
-            }
-          } else {
-            toast.success('Trainer created successfully!');
+          try {
+            await createTenantSchemaForTrainer(trainerData.id);
+            toast.success('Trainer record created successfully!');
+          } catch (schemaError) {
+            console.error('⚠️ Schema creation failed:', schemaError);
+            toast.success('Trainer record created successfully (schema creation pending)');
           }
 
-          // Show instructions for the trainer to create their auth account
+          // Show instructions for the trainer
           toast.success(
-            `Trainer record created! 
-            The trainer can now register at your app with email: ${newTrainer.email}`,
+            `✅ Trainer record created! The trainer can now register at your app with email: ${newTrainer.email}`,
             { duration: 8000 }
           );
 
@@ -460,7 +442,6 @@ const TrainerManagement = () => {
       setNewTrainer({
         email: '',
         full_name: '',
-        password: 'pass123',
         subscription_plan: 'trial',
         trial_days: 14
       });
@@ -583,8 +564,8 @@ const TrainerManagement = () => {
           <div>
             <h4 className="text-sm font-medium text-blue-800">How Trainer Creation Works</h4>
             <p className="text-sm text-blue-700 mt-1">
-              When you create a trainer record, they will need to register their own account using the same email address. 
-              The system will automatically link their auth account to the trainer record you create here.
+              <strong>Simple Database-Only Approach:</strong> This creates a trainer record in the database with the provided email. 
+              The trainer can then register their own account using the same email address, and the system will automatically link their auth account to this trainer record.
             </p>
           </div>
         </div>
@@ -847,7 +828,7 @@ const TrainerManagement = () => {
                   name="email"
                   value={newTrainer.email}
                   onChange={handleInputChange}
-                  disabled={editingTrainer} // Don't allow email change for existing trainers
+                  disabled={editingTrainer}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
                   placeholder="Enter trainer's email"
                 />
@@ -855,10 +836,11 @@ const TrainerManagement = () => {
               
               {!editingTrainer && (
                 <>
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                    <p className="text-sm text-yellow-800">
-                      <strong>Note:</strong> The trainer will need to register their own account using this email address. 
-                      The system will automatically link their account to this trainer record.
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-sm text-green-800">
+                      <strong>✅ Simple Approach:</strong> This creates a trainer record in the database. 
+                      The trainer can then register their own account using this email address, 
+                      and the system will automatically link their account.
                     </p>
                   </div>
                   
@@ -896,7 +878,7 @@ const TrainerManagement = () => {
                   {processingAction === 'new' ? (
                     'Creating...'
                   ) : (
-                    editingTrainer ? 'Update Trainer' : 'Create Trainer'
+                    editingTrainer ? 'Update Trainer' : 'Create Trainer Record'
                   )}
                 </button>
               </div>

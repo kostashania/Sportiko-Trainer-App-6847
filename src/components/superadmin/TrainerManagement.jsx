@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { useSuperadmin } from '../../contexts/SuperadminContext';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
@@ -24,6 +26,10 @@ const TrainerManagement = () => {
   const [processingAction, setProcessingAction] = useState(null);
   const [authDebugInfo, setAuthDebugInfo] = useState(null);
 
+  // Get authentication context
+  const { user, profile } = useAuth();
+  const { isSuperadmin } = useSuperadmin();
+
   useEffect(() => {
     loadTrainers();
     checkAuthenticationStatus();
@@ -33,12 +39,39 @@ const TrainerManagement = () => {
     try {
       console.log('🔍 Checking authentication status...');
       
-      // Get current session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log('📱 Session check:', { session: !!session, error: sessionError });
+      // Check if we have a user from context (works for both demo and real users)
+      if (!user) {
+        console.warn('⚠️ No user found in auth context');
+        toast.error('No active session. Please log in again.');
+        return;
+      }
+
+      console.log('👤 User from context:', { 
+        id: user.id, 
+        email: user.email, 
+        profile: profile 
+      });
+
+      // For demo users, we don't need to check Supabase session
+      const isDemoUser = user.email === 'superadmin_pt@sportiko.eu';
       
+      if (isDemoUser) {
+        console.log('📱 Demo user detected, skipping Supabase session check');
+        setAuthDebugInfo({
+          user_email: user.email,
+          session_info: 'Demo session (local storage)',
+          can_delete_trainers: true,
+          is_demo: true
+        });
+        return;
+      }
+
+      // For real users, check Supabase session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('📱 Supabase session check:', { session: !!session, error: sessionError });
+
       if (!session) {
-        console.warn('⚠️ No active session found');
+        console.warn('⚠️ No active Supabase session found');
         toast.error('No active session. Please log in again.');
         return;
       }
@@ -53,7 +86,6 @@ const TrainerManagement = () => {
         
         if (debugData[0] && !debugData[0].can_delete_trainers) {
           console.warn('⚠️ User cannot delete trainers');
-          
           // Try to ensure superadmin record exists
           try {
             const { error: ensureError } = await supabase.rpc('ensure_superadmin_record');
@@ -119,39 +151,23 @@ const TrainerManagement = () => {
       // Show loading toast
       toast.loading('Deleting trainer...', { id: 'delete-trainer' });
 
-      // Check authentication first
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      // Check authentication first - use context instead of Supabase session for demo users
+      if (!user) {
         throw new Error('No active session - please log in again');
       }
 
-      console.log('👤 Authenticated as:', session.user.email, session.user.id);
+      console.log('👤 Authenticated as:', user.email, user.id);
 
-      // Get debug info about deletion permissions
-      console.log('🔍 Getting deletion debug info...');
-      const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
-      
-      if (debugError) {
-        console.error('❌ Debug error:', debugError);
-      } else {
-        console.log('🔍 Deletion debug info:', debugData[0]);
-        
-        if (debugData[0] && !debugData[0].can_delete_trainers) {
-          throw new Error('You do not have permission to delete trainers. Please ensure you are logged in as a superadmin.');
-        }
+      // Check if user is superadmin
+      if (!isSuperadmin && profile?.role !== 'superadmin') {
+        throw new Error('You do not have permission to delete trainers. Please ensure you are logged in as a superadmin.');
       }
 
-      // Try the admin delete function first
-      console.log('🔧 Using admin delete function...');
-      const { data: deleteResult, error: deleteError } = await supabase.rpc('admin_delete_trainer', {
-        trainer_id: trainerId
-      });
-
-      if (deleteError) {
-        console.error('❌ Admin delete failed:', deleteError);
-        
-        // If admin function fails, try direct delete
-        console.log('🔄 Trying direct delete...');
+      // For demo users, use direct delete. For real users, try admin function first
+      const isDemoUser = user.email === 'superadmin_pt@sportiko.eu';
+      
+      if (isDemoUser) {
+        console.log('🔧 Demo user - using direct delete...');
         const { error: directError } = await supabase
           .from('trainers')
           .delete()
@@ -160,6 +176,27 @@ const TrainerManagement = () => {
         if (directError) {
           console.error('❌ Direct delete failed:', directError);
           throw new Error(`Deletion failed: ${directError.message}`);
+        }
+      } else {
+        // Try the admin delete function first for real users
+        console.log('🔧 Using admin delete function...');
+        const { data: deleteResult, error: deleteError } = await supabase.rpc('admin_delete_trainer', {
+          trainer_id: trainerId
+        });
+
+        if (deleteError) {
+          console.error('❌ Admin delete failed:', deleteError);
+          // If admin function fails, try direct delete
+          console.log('🔄 Trying direct delete...');
+          const { error: directError } = await supabase
+            .from('trainers')
+            .delete()
+            .eq('id', trainerId);
+
+          if (directError) {
+            console.error('❌ Direct delete failed:', directError);
+            throw new Error(`Deletion failed: ${directError.message}`);
+          }
         }
       }
 
@@ -176,7 +213,6 @@ const TrainerManagement = () => {
 
       // Refresh the list to ensure consistency
       await loadTrainers();
-
     } catch (error) {
       console.error('❌ Exception during trainer deletion:', error);
       toast.error(`Deletion failed: ${error.message}`, { id: 'delete-trainer' });
@@ -201,8 +237,8 @@ const TrainerManagement = () => {
       }
 
       // Update local state
-      setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId 
+      setTrainers(trainers.map(trainer =>
+        trainer.id === trainerId
           ? { ...trainer, is_active: !currentStatus }
           : trainer
       ));
@@ -224,7 +260,7 @@ const TrainerManagement = () => {
 
       const currentTrainer = trainers.find(t => t.id === trainerId);
       const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
-      
+
       // Add 14 days to current trial end date (or current date if no trial)
       const newTrialEnd = new Date(currentTrialEnd);
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
@@ -240,8 +276,8 @@ const TrainerManagement = () => {
       }
 
       // Update local state
-      setTrainers(trainers.map(trainer => 
-        trainer.id === trainerId 
+      setTrainers(trainers.map(trainer =>
+        trainer.id === trainerId
           ? { ...trainer, trial_end: newTrialEnd.toISOString() }
           : trainer
       ));
@@ -260,6 +296,7 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(`schema-${trainerId}`);
       toast.loading('Creating tenant schema...', { id: 'create-schema' });
+
       console.log(`🏗️ Creating tenant schema for trainer ${trainerId}`);
 
       const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
@@ -268,19 +305,16 @@ const TrainerManagement = () => {
 
       if (error) {
         console.error('❌ Error creating tenant schema:', error);
-        
         // Check if policy already exists error
         if (error.code === '42710') {
           toast.success('Schema already exists for this trainer', { id: 'create-schema' });
           return;
         }
-        
         // Check if schema already exists
         if (error.code === '42P06') {
           toast.success('Schema already exists', { id: 'create-schema' });
           return;
         }
-        
         throw error;
       }
 
@@ -421,7 +455,6 @@ const TrainerManagement = () => {
             console.error('⚠️ Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
           }
-
         } catch (error) {
           console.error('❌ Error creating trainer:', error);
           throw error;
@@ -454,11 +487,11 @@ const TrainerManagement = () => {
 
   const getTrialStatus = (trialEnd) => {
     if (!trialEnd) return { status: 'expired', daysLeft: 0 };
-    
+
     const endDate = new Date(trialEnd);
     const today = new Date();
     const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
-    
+
     if (daysLeft > 0) {
       return { status: 'active', daysLeft };
     } else {
@@ -529,32 +562,38 @@ const TrainerManagement = () => {
       {/* Authentication Status */}
       {authDebugInfo && (
         <div className={`p-4 rounded-lg border ${
-          authDebugInfo.can_delete_trainers 
-            ? 'bg-green-50 border-green-200' 
+          authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
+            ? 'bg-green-50 border-green-200'
             : 'bg-yellow-50 border-yellow-200'
         }`}>
           <div className="flex items-center space-x-2">
             <SafeIcon 
-              icon={authDebugInfo.can_delete_trainers ? FiCheck : FiAlertTriangle} 
+              icon={authDebugInfo.can_delete_trainers || authDebugInfo.is_demo ? FiCheck : FiAlertTriangle} 
               className={`w-5 h-5 ${
-                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
+                authDebugInfo.can_delete_trainers || authDebugInfo.is_demo 
+                  ? 'text-green-600' 
+                  : 'text-yellow-600'
               }`} 
             />
             <div className="flex-1">
               <p className={`text-sm font-medium ${
-                authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'
+                authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
+                  ? 'text-green-800'
+                  : 'text-yellow-800'
               }`}>
-                {authDebugInfo.can_delete_trainers 
-                  ? 'Superadmin access confirmed' 
+                {authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
+                  ? 'Superadmin access confirmed'
                   : 'Limited access - some operations may not work'
                 }
               </p>
               <p className={`text-xs ${
-                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
+                authDebugInfo.can_delete_trainers || authDebugInfo.is_demo
+                  ? 'text-green-600'
+                  : 'text-yellow-600'
               }`}>
-                User: {authDebugInfo.user_email} | 
-                Session: {authDebugInfo.session_info} | 
-                Can delete: {authDebugInfo.can_delete_trainers ? 'Yes' : 'No'}
+                User: {user?.email} | Session: {authDebugInfo.session_info} | 
+                Can delete: {authDebugInfo.can_delete_trainers || authDebugInfo.is_demo ? 'Yes' : 'No'}
+                {authDebugInfo.is_demo && ' (Demo Mode)'}
               </p>
             </div>
           </div>
@@ -604,6 +643,7 @@ const TrainerManagement = () => {
         <div className="px-6 py-4 border-b border-gray-200">
           <h3 className="text-lg font-medium text-gray-900">All Trainers ({filteredTrainers.length})</h3>
         </div>
+
         {filteredTrainers.length === 0 ? (
           <div className="p-6 text-center">
             <p className="text-gray-500 mb-4">No trainers found</p>
@@ -693,13 +733,15 @@ const TrainerManagement = () => {
                         >
                           {trialStatus.status === 'active'
                             ? `${trialStatus.daysLeft} days left`
-                            : 'Expired'}
+                            : 'Expired'
+                          }
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {trainer.created_at
                           ? format(new Date(trainer.created_at), 'MMM dd, yyyy')
-                          : 'N/A'}
+                          : 'N/A'
+                        }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
@@ -721,6 +763,7 @@ const TrainerManagement = () => {
                           >
                             <SafeIcon icon={FiEdit} className="w-4 h-4" />
                           </button>
+
                           <button
                             onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
                             disabled={isProcessingThisTrainer}
@@ -736,6 +779,7 @@ const TrainerManagement = () => {
                               trainer.is_active !== false ? 'Deactivate' : 'Activate'
                             )}
                           </button>
+
                           <button
                             onClick={() => extendTrial(trainer.id)}
                             disabled={isProcessingThisTrainer}
@@ -749,6 +793,7 @@ const TrainerManagement = () => {
                               'Extend Trial'
                             )}
                           </button>
+
                           <button
                             onClick={() => createTenantSchemaForTrainer(trainer.id)}
                             disabled={isProcessingThisTrainer}
@@ -763,11 +808,16 @@ const TrainerManagement = () => {
                               'Create Schema'
                             )}
                           </button>
+
                           <button
                             onClick={() => handleDeleteTrainer(trainer.id)}
-                            disabled={isProcessingThisTrainer || !authDebugInfo?.can_delete_trainers}
+                            disabled={isProcessingThisTrainer || (!authDebugInfo?.can_delete_trainers && !authDebugInfo?.is_demo)}
                             className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={authDebugInfo?.can_delete_trainers ? "Delete Trainer" : "Insufficient permissions"}
+                            title={
+                              authDebugInfo?.can_delete_trainers || authDebugInfo?.is_demo
+                                ? "Delete Trainer"
+                                : "Insufficient permissions"
+                            }
                           >
                             {processingAction === `delete-${trainer.id}` ? (
                               <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />
@@ -793,6 +843,7 @@ const TrainerManagement = () => {
             <h2 className="text-xl font-semibold mb-4">
               {editingTrainer ? 'Edit Trainer' : 'Add New Trainer'}
             </h2>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -807,6 +858,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's full name"
                 />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
@@ -821,6 +873,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's email"
                 />
               </div>
+
               {!editingTrainer && (
                 <>
                   <div>
@@ -836,6 +889,7 @@ const TrainerManagement = () => {
                       placeholder="Enter password"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Trial Days
@@ -852,6 +906,7 @@ const TrainerManagement = () => {
                   </div>
                 </>
               )}
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   onClick={() => setShowModal(false)}

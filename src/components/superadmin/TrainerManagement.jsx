@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiEdit, FiTrash2, FiEye, FiEyeOff, FiLoader } = FiIcons;
+const { FiUsers, FiCalendar, FiMail, FiClock, FiCheck, FiX, FiPlus, FiDatabase, FiEdit, FiTrash2, FiEye, FiEyeOff, FiLoader, FiRefreshCw, FiAlertTriangle } = FiIcons;
 
 const TrainerManagement = () => {
   const [trainers, setTrainers] = useState([]);
@@ -22,71 +22,59 @@ const TrainerManagement = () => {
     trial_days: 14
   });
   const [processingAction, setProcessingAction] = useState(null);
+  const [authDebugInfo, setAuthDebugInfo] = useState(null);
 
   useEffect(() => {
     loadTrainers();
-    // Also ensure superadmin record exists
-    ensureSuperadminRecord();
+    checkAuthenticationStatus();
   }, []);
 
-  const ensureSuperadminRecord = async () => {
+  const checkAuthenticationStatus = async () => {
     try {
-      console.log('🔧 Ensuring superadmin record exists...');
+      console.log('🔍 Checking authentication status...');
       
-      // First check if we're authenticated
-      const { data: { session } } = await supabase.auth.getSession();
+      // Get current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('📱 Session check:', { session: !!session, error: sessionError });
+      
       if (!session) {
         console.warn('⚠️ No active session found');
+        toast.error('No active session. Please log in again.');
         return;
       }
 
-      console.log('👤 Current session user:', session.user.email, session.user.id);
-
-      // Manually insert superadmin record if needed
-      const { error } = await supabase
-        .from('superadmins')
-        .upsert({
-          id: session.user.id,
-          email: session.user.email,
-          full_name: session.user.user_metadata?.full_name || 'Super Admin',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-
-      if (error) {
-        console.warn('⚠️ Could not ensure superadmin record:', error.message);
+      // Debug user authentication
+      const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
+      if (debugError) {
+        console.error('❌ Debug auth error:', debugError);
       } else {
-        console.log('✅ Superadmin record ensured');
-      }
-    } catch (error) {
-      console.warn('⚠️ Exception ensuring superadmin record:', error);
-    }
-  };
-
-  const debugAuth = async () => {
-    try {
-      console.log('🔍 Debugging authentication...');
-      
-      // Check current session
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Session:', session);
-      
-      if (session) {
-        console.log('User ID:', session.user.id);
-        console.log('User Email:', session.user.email);
+        console.log('🐛 Auth debug info:', debugData);
+        setAuthDebugInfo(debugData[0]);
         
-        // Check if user exists in superadmins table
-        const { data: superadminData, error } = await supabase
-          .from('superadmins')
-          .select('*')
-          .eq('id', session.user.id);
+        if (debugData[0] && !debugData[0].can_delete_trainers) {
+          console.warn('⚠️ User cannot delete trainers');
           
-        console.log('Superadmin data:', superadminData, error);
-      } else {
-        console.log('❌ No active session');
+          // Try to ensure superadmin record exists
+          try {
+            const { error: ensureError } = await supabase.rpc('ensure_superadmin_record');
+            if (ensureError) {
+              console.error('❌ Failed to ensure superadmin record:', ensureError);
+            } else {
+              console.log('✅ Superadmin record ensured, rechecking...');
+              // Recheck after ensuring record
+              const { data: recheckData } = await supabase.rpc('debug_user_auth');
+              if (recheckData && recheckData[0]) {
+                setAuthDebugInfo(recheckData[0]);
+                console.log('🔄 Updated auth info:', recheckData[0]);
+              }
+            }
+          } catch (ensureError) {
+            console.error('❌ Exception ensuring superadmin record:', ensureError);
+          }
+        }
       }
     } catch (error) {
-      console.error('❌ Debug exception:', error);
+      console.error('❌ Authentication check failed:', error);
     }
   };
 
@@ -94,9 +82,6 @@ const TrainerManagement = () => {
     try {
       setLoading(true);
       console.log('📋 Loading trainers from database...');
-      
-      // Debug authentication first
-      await debugAuth();
 
       const { data, error } = await supabase
         .from('trainers')
@@ -115,6 +100,88 @@ const TrainerManagement = () => {
       toast.error('Failed to load trainers: ' + (error?.message || 'Unknown error'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const debugAuth = async () => {
+    await checkAuthenticationStatus();
+  };
+
+  const handleDeleteTrainer = async (trainerId) => {
+    if (!confirm('Are you sure you want to delete this trainer? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setProcessingAction(`delete-${trainerId}`);
+      console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
+
+      // Show loading toast
+      toast.loading('Deleting trainer...', { id: 'delete-trainer' });
+
+      // Check authentication first
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session - please log in again');
+      }
+
+      console.log('👤 Authenticated as:', session.user.email, session.user.id);
+
+      // Get debug info about deletion permissions
+      console.log('🔍 Getting deletion debug info...');
+      const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
+      
+      if (debugError) {
+        console.error('❌ Debug error:', debugError);
+      } else {
+        console.log('🔍 Deletion debug info:', debugData[0]);
+        
+        if (debugData[0] && !debugData[0].can_delete_trainers) {
+          throw new Error('You do not have permission to delete trainers. Please ensure you are logged in as a superadmin.');
+        }
+      }
+
+      // Try the admin delete function first
+      console.log('🔧 Using admin delete function...');
+      const { data: deleteResult, error: deleteError } = await supabase.rpc('admin_delete_trainer', {
+        trainer_id: trainerId
+      });
+
+      if (deleteError) {
+        console.error('❌ Admin delete failed:', deleteError);
+        
+        // If admin function fails, try direct delete
+        console.log('🔄 Trying direct delete...');
+        const { error: directError } = await supabase
+          .from('trainers')
+          .delete()
+          .eq('id', trainerId);
+
+        if (directError) {
+          console.error('❌ Direct delete failed:', directError);
+          throw new Error(`Deletion failed: ${directError.message}`);
+        }
+      }
+
+      console.log('✅ Trainer deletion successful');
+
+      // Update the UI state
+      setTrainers(prevTrainers => {
+        const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
+        console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
+        return updatedTrainers;
+      });
+
+      toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
+
+      // Refresh the list to ensure consistency
+      await loadTrainers();
+
+    } catch (error) {
+      console.error('❌ Exception during trainer deletion:', error);
+      toast.error(`Deletion failed: ${error.message}`, { id: 'delete-trainer' });
+    } finally {
+      setProcessingAction(null);
     }
   };
 
@@ -222,120 +289,6 @@ const TrainerManagement = () => {
     } catch (error) {
       console.error('❌ Error creating tenant schema:', error);
       toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
-    } finally {
-      setProcessingAction(null);
-    }
-  };
-
-  const handleDeleteTrainer = async (trainerId) => {
-    if (!confirm('Are you sure you want to delete this trainer? This will also delete their tenant schema and all associated data.')) {
-      return;
-    }
-
-    try {
-      setProcessingAction(`delete-${trainerId}`);
-      console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
-
-      // Show loading toast
-      toast.loading('Deleting trainer...', { id: 'delete-trainer' });
-
-      // Check current session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('No active session - please log in again');
-      }
-
-      console.log('👤 Authenticated as:', session.user.email, session.user.id);
-
-      // For demo purposes and to bypass RLS issues, we'll use a direct approach
-      // First check if trainer exists
-      const { data: existingTrainer, error: checkError } = await supabase
-        .from('trainers')
-        .select('id, email, full_name')
-        .eq('id', trainerId)
-        .single();
-
-      if (checkError) {
-        if (checkError.code === 'PGRST116') {
-          // Trainer doesn't exist
-          console.log('⚠️ Trainer not found in database');
-          setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
-          toast.success('Trainer not found (already deleted)', { id: 'delete-trainer' });
-          return;
-        }
-        throw checkError;
-      }
-
-      console.log('📋 Found trainer to delete:', existingTrainer);
-
-      // Try to delete using service role or admin function
-      // Since RLS is blocking us, let's try a different approach
-      try {
-        // Method 1: Direct delete (this might fail due to RLS)
-        console.log('🔄 Attempting direct delete...');
-        const { error: deleteError } = await supabase
-          .from('trainers')
-          .delete()
-          .eq('id', trainerId);
-
-        if (deleteError) {
-          console.log('❌ Direct delete failed:', deleteError.message);
-          
-          // Method 2: Try using an admin function if available
-          console.log('🔄 Trying admin function approach...');
-          const { data: adminResult, error: adminError } = await supabase.rpc('admin_delete_trainer', {
-            trainer_id: trainerId
-          });
-
-          if (adminError) {
-            console.log('❌ Admin function failed:', adminError.message);
-            
-            // Method 3: Force update to mark as deleted
-            console.log('🔄 Marking trainer as inactive instead...');
-            const { error: updateError } = await supabase
-              .from('trainers')
-              .update({ 
-                is_active: false,
-                email: `deleted_${Date.now()}_${existingTrainer.email}`,
-                full_name: `[DELETED] ${existingTrainer.full_name}`
-              })
-              .eq('id', trainerId);
-
-            if (updateError) {
-              throw updateError;
-            }
-
-            // Remove from UI
-            setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
-            toast.success('Trainer marked as deleted', { id: 'delete-trainer' });
-            console.log('✅ Trainer marked as deleted');
-            return;
-          }
-        }
-
-        // If we get here, deletion was successful
-        console.log('✅ Trainer deleted successfully');
-        
-        // Update the UI state
-        setTrainers(prevTrainers => {
-          const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
-          console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
-          return updatedTrainers;
-        });
-
-        toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
-
-      } catch (deleteError) {
-        console.error('❌ All deletion methods failed:', deleteError);
-        
-        // As a last resort, just remove from UI and warn user
-        setTrainers(prevTrainers => prevTrainers.filter(t => t.id !== trainerId));
-        toast.warning('Trainer removed from view. Please refresh to verify deletion.', { id: 'delete-trainer' });
-      }
-
-    } catch (error) {
-      console.error('❌ Exception during trainer deletion:', error);
-      toast.error(`Deletion failed: ${error.message}`, { id: 'delete-trainer' });
     } finally {
       setProcessingAction(null);
     }
@@ -567,10 +520,46 @@ const TrainerManagement = () => {
             onClick={debugAuth}
             className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center text-sm"
           >
+            <SafeIcon icon={FiRefreshCw} className="w-4 h-4 mr-2" />
             Debug Auth
           </button>
         </div>
       </div>
+
+      {/* Authentication Status */}
+      {authDebugInfo && (
+        <div className={`p-4 rounded-lg border ${
+          authDebugInfo.can_delete_trainers 
+            ? 'bg-green-50 border-green-200' 
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <div className="flex items-center space-x-2">
+            <SafeIcon 
+              icon={authDebugInfo.can_delete_trainers ? FiCheck : FiAlertTriangle} 
+              className={`w-5 h-5 ${
+                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
+              }`} 
+            />
+            <div className="flex-1">
+              <p className={`text-sm font-medium ${
+                authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'
+              }`}>
+                {authDebugInfo.can_delete_trainers 
+                  ? 'Superadmin access confirmed' 
+                  : 'Limited access - some operations may not work'
+                }
+              </p>
+              <p className={`text-xs ${
+                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
+              }`}>
+                User: {authDebugInfo.user_email} | 
+                Session: {authDebugInfo.session_info} | 
+                Can delete: {authDebugInfo.can_delete_trainers ? 'Yes' : 'No'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -776,9 +765,9 @@ const TrainerManagement = () => {
                           </button>
                           <button
                             onClick={() => handleDeleteTrainer(trainer.id)}
-                            disabled={isProcessingThisTrainer}
+                            disabled={isProcessingThisTrainer || !authDebugInfo?.can_delete_trainers}
                             className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Delete Trainer"
+                            title={authDebugInfo?.can_delete_trainers ? "Delete Trainer" : "Insufficient permissions"}
                           >
                             {processingAction === `delete-${trainer.id}` ? (
                               <SafeIcon icon={FiLoader} className="w-4 h-4 animate-spin" />

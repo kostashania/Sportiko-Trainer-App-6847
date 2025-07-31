@@ -383,6 +383,10 @@ const TrainerManagement = () => {
         return;
       }
 
+      // Store current session to restore it later
+      const currentSession = await supabase.auth.getSession();
+      console.log('💾 Storing current session for restoration');
+
       if (editingTrainer) {
         // Update existing trainer
         console.log('📝 Updating existing trainer:', editingTrainer.id);
@@ -407,14 +411,14 @@ const TrainerManagement = () => {
         console.log('✅ Trainer updated successfully');
 
       } else {
-        // Create new trainer
-        console.log('➕ Creating new trainer');
+        // Create new trainer WITHOUT creating auth user
+        console.log('➕ Creating new trainer record only (no auth user)');
         const newTrainerId = crypto.randomUUID();
         const newTrialEnd = new Date();
         newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
         try {
-          // Skip auth user creation and create trainer record directly
+          // Create trainer record directly (no auth user creation)
           console.log('👨‍🏫 Creating trainer record...');
           const { data: trainerData, error: trainerError } = await supabase
             .from('trainers')
@@ -445,6 +449,13 @@ const TrainerManagement = () => {
           } catch (schemaError) {
             console.error('⚠️ Schema creation failed:', schemaError);
             toast.success('Trainer created successfully (schema creation pending)');
+          }
+
+          // IMPORTANT: Restore the original session to prevent logout
+          if (currentSession.data.session) {
+            console.log('🔄 Restoring original session...');
+            await supabase.auth.setSession(currentSession.data.session);
+            console.log('✅ Session restored successfully');
           }
 
         } catch (error) {
@@ -840,7 +851,7 @@ const TrainerManagement = () => {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password
+                      Password (for future login)
                     </label>
                     <input
                       type="text"
@@ -848,8 +859,11 @@ const TrainerManagement = () => {
                       value={newTrainer.password}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter password"
+                      placeholder="Default password"
                     />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Note: Auth user will need to be created separately
+                    </p>
                   </div>
                   
                   <div>

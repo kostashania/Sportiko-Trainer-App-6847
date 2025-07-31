@@ -40,6 +40,19 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔄 Auth state change:', event, !!session);
+        
+        // Prevent unwanted session changes during trainer creation
+        if (event === 'SIGNED_IN' && session?.user) {
+          // Check if this is an unwanted session change
+          const currentUser = user;
+          if (currentUser && currentUser.email === 'superadmin_pt@sportiko.eu' && 
+              session.user.email !== 'superadmin_pt@sportiko.eu') {
+            console.log('⚠️ Preventing unwanted session change during trainer creation');
+            // Don't update the session if we're currently a superadmin
+            return;
+          }
+        }
+        
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user);
@@ -104,11 +117,9 @@ export const AuthProvider = ({ children }) => {
 
         if (!trainerError && trainerData) {
           console.log('🏃 Found in trainers table:', trainerData);
-          
           // Ensure tenant schema exists for this trainer
           console.log('🏗️ Ensuring tenant schema exists...');
           await ensureTenantSchema(user.id);
-          
           setProfile({
             ...trainerData,
             role: 'trainer',
@@ -148,7 +159,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.warn('⚠️ No profile found for user:', user.email);
-      
+
       // If user is the known trainer, create their profile
       if (user.id === 'd45616a4-d90b-4358-b62c-9005f61e3d84' || user.email === 'trainer_pt@sportiko.eu') {
         console.log('🏃 Creating profile for known trainer');
@@ -171,7 +182,6 @@ export const AuthProvider = ({ children }) => {
             console.log('✅ Created trainer profile:', newTrainer);
             // Ensure tenant schema exists
             await ensureTenantSchema(user.id);
-            
             setProfile({
               ...newTrainer,
               role: 'trainer'
@@ -191,6 +201,7 @@ export const AuthProvider = ({ children }) => {
         role: 'trainer', // Default role
         trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
       });
+
     } catch (error) {
       console.error('❌ Error fetching profile:', error);
       // Create a fallback profile with basic information if user exists
@@ -231,6 +242,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+
       setUser(null);
       setProfile(null);
       return { error: null };

@@ -7,7 +7,10 @@ import { motion } from 'framer-motion';
 import StatsCard from '../dashboard/StatsCard';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp, FiDatabase, FiShield, FiSettings, FiLayers } = FiIcons;
+const { 
+  FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp, FiDatabase, 
+  FiShield, FiSettings, FiLayers, FiCreditCard 
+} = FiIcons;
 
 const SuperadminDashboard = () => {
   const navigate = useNavigate();
@@ -16,7 +19,8 @@ const SuperadminDashboard = () => {
     totalPlayers: 0,
     totalRevenue: 0,
     activeOrders: 0,
-    tenantSchemas: 0
+    tenantSchemas: 0,
+    activeSubscriptions: 0
   });
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
@@ -33,7 +37,7 @@ const SuperadminDashboard = () => {
       // Get total trainers
       const { data: trainers } = await supabase
         .from('trainers')
-        .select('id');
+        .select('id, subscription_status, subscription_plan');
 
       // Get total orders
       const { data: orders } = await supabase
@@ -51,6 +55,11 @@ const SuperadminDashboard = () => {
         tenantSchemasCount = trainers?.length || 0;
       }
 
+      // Calculate subscription stats
+      const activeSubscriptions = trainers?.filter(t => 
+        t.subscription_status === 'active' || t.subscription_status === 'trial'
+      ).length || 0;
+
       // Calculate stats
       const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
       const activeOrders = orders?.filter(order => 
@@ -62,7 +71,8 @@ const SuperadminDashboard = () => {
         totalPlayers: 0, // This would need to be calculated from all tenant schemas
         totalRevenue,
         activeOrders,
-        tenantSchemas: tenantSchemasCount
+        tenantSchemas: tenantSchemasCount,
+        activeSubscriptions
       });
     } catch (error) {
       console.error('Error loading superadmin stats:', error);
@@ -131,6 +141,10 @@ const SuperadminDashboard = () => {
     navigate('/superadmin/ads');
   };
 
+  const handleManageSubscriptions = () => {
+    navigate('/superadmin/subscriptions');
+  };
+
   const handleSystemInfo = () => {
     navigate('/superadmin/info');
   };
@@ -160,12 +174,19 @@ const SuperadminDashboard = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <StatsCard
           title="Total Trainers"
           value={stats.totalTrainers}
           icon={FiUsers}
           color="blue"
+          loading={loading}
+        />
+        <StatsCard
+          title="Active Subscriptions"
+          value={stats.activeSubscriptions}
+          icon={FiCreditCard}
+          color="green"
           loading={loading}
         />
         <StatsCard
@@ -217,6 +238,19 @@ const SuperadminDashboard = () => {
             </button>
 
             <button
+              onClick={handleManageSubscriptions}
+              className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+            >
+              <div className="flex items-center">
+                <SafeIcon icon={FiCreditCard} className="w-5 h-5 text-green-600 mr-3" />
+                <div>
+                  <span className="text-green-700 font-medium">Subscription Management</span>
+                  <p className="text-green-600 text-sm">Manage trainer subscriptions and billing</p>
+                </div>
+              </div>
+            </button>
+
+            <button
               onClick={handleManageSchemas}
               className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
             >
@@ -231,39 +265,39 @@ const SuperadminDashboard = () => {
 
             <button
               onClick={handleManageShop}
-              className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+              className="w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
-                <SafeIcon icon={FiShoppingBag} className="w-5 h-5 text-green-600 mr-3" />
+                <SafeIcon icon={FiShoppingBag} className="w-5 h-5 text-yellow-600 mr-3" />
                 <div>
-                  <span className="text-green-700 font-medium">Manage Shop Items</span>
-                  <p className="text-green-600 text-sm">Add products and manage inventory</p>
+                  <span className="text-yellow-700 font-medium">Manage Shop Items</span>
+                  <p className="text-yellow-600 text-sm">Add products and manage inventory</p>
                 </div>
               </div>
             </button>
 
             <button
               onClick={handleManageAds}
-              className="w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
+              className="w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
-                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-yellow-600 mr-3" />
+                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-indigo-600 mr-3" />
                 <div>
-                  <span className="text-yellow-700 font-medium">Manage Advertisements</span>
-                  <p className="text-yellow-600 text-sm">Create and schedule platform ads</p>
+                  <span className="text-indigo-700 font-medium">Manage Advertisements</span>
+                  <p className="text-indigo-600 text-sm">Create and schedule platform ads</p>
                 </div>
               </div>
             </button>
 
             <button
               onClick={handleViewAnalytics}
-              className="w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+              className="w-full text-left p-3 bg-pink-50 hover:bg-pink-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
-                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-indigo-600 mr-3" />
+                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-pink-600 mr-3" />
                 <div>
-                  <span className="text-indigo-700 font-medium">View Analytics</span>
-                  <p className="text-indigo-600 text-sm">Platform performance metrics</p>
+                  <span className="text-pink-700 font-medium">View Analytics</span>
+                  <p className="text-pink-600 text-sm">Platform performance metrics</p>
                 </div>
               </div>
             </button>
@@ -297,7 +331,7 @@ const SuperadminDashboard = () => {
       {/* Platform Health */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Health</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
             <div className="flex items-center">
               <SafeIcon icon={FiDatabase} className="w-5 h-5 text-green-600 mr-3" />
@@ -325,6 +359,13 @@ const SuperadminDashboard = () => {
               <span className="text-purple-800 font-medium">Schemas</span>
             </div>
             <span className="text-purple-600 font-semibold">{stats.tenantSchemas} Active</span>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+            <div className="flex items-center">
+              <SafeIcon icon={FiCreditCard} className="w-5 h-5 text-blue-600 mr-3" />
+              <span className="text-blue-800 font-medium">Subscriptions</span>
+            </div>
+            <span className="text-blue-600 font-semibold">{stats.activeSubscriptions} Active</span>
           </div>
         </div>
       </div>

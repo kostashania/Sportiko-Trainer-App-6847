@@ -6,7 +6,11 @@ import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiDatabase, FiLayers } = FiIcons;
+const { 
+  FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, 
+  FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, 
+  FiDatabase, FiLayers 
+} = FiIcons;
 
 const SuperadminSidebar = () => {
   const { signOut } = useAuth();
@@ -36,6 +40,7 @@ const SuperadminSidebar = () => {
   const menuItems = [
     { path: '/superadmin/dashboard', icon: FiHome, label: 'Dashboard' },
     { path: '/superadmin/trainers', icon: FiUsers, label: 'Trainers' },
+    { path: '/superadmin/subscriptions', icon: FiCreditCard, label: 'Subscriptions' },
     { path: '/superadmin/schemas', icon: FiLayers, label: 'Tenant Schemas' },
     { path: '/superadmin/shop', icon: FiShoppingBag, label: 'Shop' },
     { path: '/superadmin/ads', icon: FiMegaphone, label: 'Ads' },

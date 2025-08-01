@@ -17,6 +17,7 @@ import ShopPage from './components/shop/ShopPage';
 import SettingsPage from './components/settings/SettingsPage';
 import SuperadminDashboard from './components/superadmin/SuperadminDashboard';
 import TrainerManagement from './components/superadmin/TrainerManagement';
+import SubscriptionManagement from './components/superadmin/SubscriptionManagement';
 import TenantSchemasManagement from './components/superadmin/TenantSchemasManagement';
 import ShopManagement from './components/superadmin/ShopManagement';
 import AdManagement from './components/superadmin/AdManagement';
@@ -68,6 +69,7 @@ const App = () => {
                   <Route index element={<Navigate to="/superadmin/dashboard" replace />} />
                   <Route path="dashboard" element={<ProtectedRoute><SuperadminDashboard /></ProtectedRoute>} />
                   <Route path="trainers" element={<ProtectedRoute><TrainerManagement /></ProtectedRoute>} />
+                  <Route path="subscriptions" element={<ProtectedRoute><SubscriptionManagement /></ProtectedRoute>} />
                   <Route path="schemas" element={<ProtectedRoute><TenantSchemasManagement /></ProtectedRoute>} />
                   <Route path="shop" element={<ProtectedRoute><ShopManagement /></ProtectedRoute>} />
                   <Route path="ads" element={<ProtectedRoute><AdManagement /></ProtectedRoute>} />

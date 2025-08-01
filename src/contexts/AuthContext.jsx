@@ -40,7 +40,6 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔄 Auth state change:', event, !!session);
-        
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user);
@@ -109,7 +108,7 @@ export const AuthProvider = ({ children }) => {
           // Ensure tenant schema exists for this trainer
           console.log('🏗️ Ensuring tenant schema exists...');
           await ensureTenantSchema(user.id);
-          
+
           setProfile({
             ...trainerData,
             role: 'trainer',
@@ -124,7 +123,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       console.warn('⚠️ No profile found for user:', user.email);
-      
+
       // If user is the known trainer, create their profile
       if (user.id === 'd45616a4-d90b-4358-b62c-9005f61e3d84' || user.email === 'trainer_pt@sportiko.eu') {
         console.log('🏃 Creating profile for known trainer');
@@ -145,8 +144,10 @@ export const AuthProvider = ({ children }) => {
             console.error('❌ Error creating trainer profile:', createError);
           } else {
             console.log('✅ Created trainer profile:', newTrainer);
+            
             // Ensure tenant schema exists
             await ensureTenantSchema(user.id);
+
             setProfile({
               ...newTrainer,
               role: 'trainer'
@@ -168,6 +169,7 @@ export const AuthProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('❌ Error fetching profile:', error);
+      
       // Create a fallback profile with basic information if user exists
       if (user) {
         setProfile({

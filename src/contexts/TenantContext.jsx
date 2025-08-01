@@ -42,7 +42,7 @@ export const TenantProvider = ({ children }) => {
       if (profile.role === 'trainer') {
         const schema = getTenantSchema(user.id);
         console.log('🏃 Trainer detected, schema:', schema);
-        
+
         // Ensure the schema exists
         const schemaExists = await ensureTenantSchema(user.id);
         if (schemaExists) {
@@ -147,19 +147,32 @@ export const TenantProvider = ({ children }) => {
       }),
       update: (data) => ({
         eq: (column, value) => ({
-          select: (cols = '*') => Promise.resolve({ data: { ...getMockData(tableName)[0], ...data }, error: null })
+          select: (cols = '*') => Promise.resolve({ 
+            data: { ...getMockData(tableName)[0], ...data }, 
+            error: null 
+          })
         })
       }),
       insert: (data) => ({
-        select: (cols = '*') => Promise.resolve({
-          data: Array.isArray(data) 
-            ? data.map((item, index) => ({ id: `mock-${Date.now()}-${index}`, ...item, created_at: new Date().toISOString() }))
-            : [{ id: `mock-${Date.now()}`, ...data, created_at: new Date().toISOString() }],
-          error: null
+        select: (cols = '*') => Promise.resolve({ 
+          data: Array.isArray(data) ? data.map((item, index) => ({
+            id: `mock-${Date.now()}-${index}`,
+            ...item,
+            created_at: new Date().toISOString()
+          })) : [{
+            id: `mock-${Date.now()}`,
+            ...data,
+            created_at: new Date().toISOString()
+          }], 
+          error: null 
         }),
-        single: () => Promise.resolve({
-          data: { id: `mock-${Date.now()}`, ...data, created_at: new Date().toISOString() },
-          error: null
+        single: () => Promise.resolve({ 
+          data: {
+            id: `mock-${Date.now()}`,
+            ...data,
+            created_at: new Date().toISOString()
+          }, 
+          error: null 
         })
       })
     };
@@ -169,17 +182,54 @@ export const TenantProvider = ({ children }) => {
   const getMockData = (tableName) => {
     const mockData = {
       players: [
-        { id: '1', name: 'John Doe', birth_date: '2000-01-01', position: 'Forward', contact: 'john@example.com', created_at: '2023-01-15T10:00:00Z' },
-        { id: '2', name: 'Sarah Smith', birth_date: '2001-03-15', position: 'Midfielder', contact: 'sarah@example.com', created_at: '2023-02-20T14:30:00Z' },
-        { id: '3', name: 'Mike Johnson', birth_date: '1999-11-10', position: 'Defender', contact: 'mike@example.com', created_at: '2023-03-05T09:15:00Z' }
+        {
+          id: '1',
+          name: 'John Doe',
+          birth_date: '2000-01-01',
+          position: 'Forward',
+          contact: 'john@example.com',
+          created_at: '2023-01-15T10:00:00Z'
+        },
+        {
+          id: '2',
+          name: 'Sarah Smith',
+          birth_date: '2001-03-15',
+          position: 'Midfielder',
+          contact: 'sarah@example.com',
+          created_at: '2023-02-20T14:30:00Z'
+        },
+        {
+          id: '3',
+          name: 'Mike Johnson',
+          birth_date: '1999-11-10',
+          position: 'Defender',
+          contact: 'mike@example.com',
+          created_at: '2023-03-05T09:15:00Z'
+        }
       ],
       homework: [
-        { id: '1', title: 'Weekly Training', due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() },
-        { id: '2', title: 'Strength Exercises', due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString() }
+        {
+          id: '1',
+          title: 'Weekly Training',
+          due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        {
+          id: '2',
+          title: 'Strength Exercises',
+          due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+        }
       ],
       payments: [
-        { id: '1', amount: 50.00, paid: false },
-        { id: '2', amount: 75.00, paid: false }
+        {
+          id: '1',
+          amount: 50.00,
+          paid: false
+        },
+        {
+          id: '2',
+          amount: 75.00,
+          paid: false
+        }
       ]
     };
 

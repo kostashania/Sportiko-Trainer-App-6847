@@ -20,13 +20,12 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     headers: {
       'X-Client-Info': 'sportiko-trainer@1.0.0',
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
+      'Content-Type': 'application/json'
     }
   },
-  db: {
-    schema: 'sportiko_trainer' // Use our dedicated schema
-  }
+  // Remove the db schema override to use default behavior
+  // The client will use the 'public' schema by default for PostgREST
+  // but we'll specify the schema in our queries
 });
 
 // Enhanced connection status checker
@@ -34,13 +33,31 @@ export const checkSupabaseConnection = async () => {
   try {
     console.log('🔍 Testing Supabase connection...');
     
-    // Test with a simple query that doesn't require authentication
+    // Test with a simple query to the sportiko_trainer schema
+    // First, let's try a basic connection test
     const { data, error } = await supabase
       .from('trainers')
       .select('count', { count: 'exact', head: true });
 
     if (error) {
       console.error('❌ Supabase connection error:', error);
+      
+      // If the trainers table doesn't exist in public schema, try sportiko_trainer schema
+      if (error.code === 'PGRST116' || error.message.includes('relation') || error.message.includes('does not exist')) {
+        console.log('🔄 Trying sportiko_trainer schema...');
+        
+        // Try with explicit schema reference
+        const { data: schemaData, error: schemaError } = await supabase.rpc('get_schemas_info');
+        
+        if (schemaError) {
+          console.error('❌ Schema check failed:', schemaError);
+          return { connected: false, error: schemaError.message };
+        }
+        
+        console.log('✅ Schema check successful');
+        return { connected: true, error: null };
+      }
+      
       return { connected: false, error: error.message };
     }
 
@@ -94,7 +111,7 @@ export const createTenantSchema = async (trainerId) => {
     console.log('🏗️ Creating tenant schema for trainer:', trainerId);
     
     // Use the schema-specific function
-    const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
+    const { data, error } = await supabase.rpc('sportiko_trainer.create_basic_tenant_schema', {
       trainer_id: trainerId
     });
 
@@ -116,7 +133,7 @@ export const ensureTenantSchema = async (trainerId) => {
   try {
     const schemaName = getTenantSchema(trainerId);
     console.log('🔍 Checking if tenant schema exists:', schemaName);
-    
+
     // Check if schema exists by trying to query a table
     const { data, error } = await supabase
       .from(`${schemaName}.players`)
@@ -167,14 +184,14 @@ export const dbConfig = {
     try {
       const stored = localStorage.getItem('sportiko_db_config');
       if (!stored) return null;
-      
+
       const config = JSON.parse(stored);
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem('sportiko_db_config');
         return null;
       }
-      
+
       return config;
     } catch (error) {
       console.error('Error retrieving DB config:', error);

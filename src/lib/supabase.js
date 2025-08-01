@@ -22,10 +22,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
       'Accept': 'application/json',
       'Content-Type': 'application/json'
     }
-  },
-  // Remove the db schema override to use default behavior
-  // The client will use the 'public' schema by default for PostgREST
-  // but we'll specify the schema in our queries
+  }
 });
 
 // Enhanced connection status checker
@@ -34,30 +31,12 @@ export const checkSupabaseConnection = async () => {
     console.log('🔍 Testing Supabase connection...');
     
     // Test with a simple query to the sportiko_trainer schema
-    // First, let's try a basic connection test
     const { data, error } = await supabase
       .from('trainers')
       .select('count', { count: 'exact', head: true });
 
     if (error) {
       console.error('❌ Supabase connection error:', error);
-      
-      // If the trainers table doesn't exist in public schema, try sportiko_trainer schema
-      if (error.code === 'PGRST116' || error.message.includes('relation') || error.message.includes('does not exist')) {
-        console.log('🔄 Trying sportiko_trainer schema...');
-        
-        // Try with explicit schema reference
-        const { data: schemaData, error: schemaError } = await supabase.rpc('get_schemas_info');
-        
-        if (schemaError) {
-          console.error('❌ Schema check failed:', schemaError);
-          return { connected: false, error: schemaError.message };
-        }
-        
-        console.log('✅ Schema check successful');
-        return { connected: true, error: null };
-      }
-      
       return { connected: false, error: error.message };
     }
 
@@ -69,12 +48,12 @@ export const checkSupabaseConnection = async () => {
   }
 };
 
-// Get tenant schema based on user ID (using st_ prefix instead of pt_)
+// Get tenant schema based on user ID (using st_ prefix)
 export const getTenantSchema = (userId) => {
   return `st_${userId.replace(/-/g, '_')}`;
 };
 
-// Schema names - updated for new structure
+// Schema names
 export const SCHEMAS = {
   MAIN: 'sportiko_trainer',
   TRAINER_PREFIX: 'st_'
@@ -86,9 +65,7 @@ export const MAIN_TABLES = {
   TRAINERS: 'trainers',
   SUPERADMINS: 'superadmins',
   SHOP_ITEMS: 'shop_items',
-  ADS: 'ads',
-  ORDERS: 'orders',
-  ORDER_ITEMS: 'order_items'
+  ORDERS: 'orders'
 };
 
 // Table names in trainer schema
@@ -101,8 +78,7 @@ export const TRAINER_TABLES = {
 // Real user IDs from the database
 export const REAL_USERS = {
   SUPERADMIN: 'be9c6165-808a-4335-b90e-22f6d20328bf',
-  TRAINER: 'd45616a4-d90b-4358-b62c-9005f61e3d84',
-  PLAYER: '131dc3dc-eccc-4c00-a2fa-8bf408b4d86c'
+  TRAINER: 'd45616a4-d90b-4358-b62c-9005f61e3d84'
 };
 
 // Function to create a tenant schema for a trainer
@@ -110,8 +86,7 @@ export const createTenantSchema = async (trainerId) => {
   try {
     console.log('🏗️ Creating tenant schema for trainer:', trainerId);
     
-    // Use the schema-specific function
-    const { data, error } = await supabase.rpc('sportiko_trainer.create_basic_tenant_schema', {
+    const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
     });
 

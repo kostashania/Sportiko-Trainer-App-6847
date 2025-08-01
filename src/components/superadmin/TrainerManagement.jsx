@@ -37,7 +37,6 @@ const TrainerManagement = () => {
   const checkAuthenticationStatus = async () => {
     try {
       console.log('🔍 Checking authentication status...');
-      
       if (!user) {
         console.warn('⚠️ No user found in auth context');
         setAuthDebugInfo({
@@ -68,7 +67,6 @@ const TrainerManagement = () => {
       // For authenticated users, check database permissions
       try {
         const { data: debugData, error: debugError } = await supabase.rpc('debug_user_auth');
-        
         if (debugError) {
           console.error('❌ Debug auth error:', debugError);
           setAuthDebugInfo({
@@ -94,7 +92,6 @@ const TrainerManagement = () => {
           error: 'Database check failed'
         });
       }
-
     } catch (error) {
       console.error('❌ Authentication check failed:', error);
       setAuthDebugInfo({
@@ -133,14 +130,12 @@ const TrainerManagement = () => {
 
   const debugAuth = async () => {
     console.log('🔧 Manual debug auth triggered');
-    
     if (!user) {
       toast.error('No active session. Please log in again.');
       return;
     }
 
     await checkAuthenticationStatus();
-
     if (authDebugInfo?.can_delete_trainers) {
       toast.success('Authentication verified successfully!');
     } else {
@@ -156,7 +151,6 @@ const TrainerManagement = () => {
     try {
       setProcessingAction(`delete-${trainerId}`);
       console.log(`🗑️ Starting deletion of trainer ${trainerId}`);
-
       toast.loading('Deleting trainer...', { id: 'delete-trainer' });
 
       if (!user) {
@@ -179,6 +173,7 @@ const TrainerManagement = () => {
         if (deleteError) {
           console.error('❌ Admin delete failed:', deleteError);
           console.log('🔄 Trying direct delete...');
+
           const { error: directError } = await supabase
             .from('trainers')
             .delete()
@@ -191,6 +186,7 @@ const TrainerManagement = () => {
         }
       } catch (functionError) {
         console.error('❌ Admin function not available:', functionError);
+
         const { error: directError } = await supabase
           .from('trainers')
           .delete()
@@ -203,7 +199,6 @@ const TrainerManagement = () => {
       }
 
       console.log('✅ Trainer deletion successful');
-
       setTrainers(prevTrainers => {
         const updatedTrainers = prevTrainers.filter(t => t.id !== trainerId);
         console.log(`📊 UI updated: ${prevTrainers.length} → ${updatedTrainers.length} trainers`);
@@ -212,7 +207,6 @@ const TrainerManagement = () => {
 
       toast.success('Trainer deleted successfully!', { id: 'delete-trainer' });
       await loadTrainers();
-
     } catch (error) {
       console.error('❌ Exception during trainer deletion:', error);
       toast.error(`Deletion failed: ${error.message}`, { id: 'delete-trainer' });
@@ -244,7 +238,6 @@ const TrainerManagement = () => {
 
       toast.success(`Trainer ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
       console.log('✅ Trainer status updated successfully');
-
     } catch (error) {
       console.error('❌ Error updating trainer status:', error);
       toast.error('Failed to update trainer status: ' + error.message);
@@ -260,7 +253,6 @@ const TrainerManagement = () => {
 
       const currentTrainer = trainers.find(t => t.id === trainerId);
       const currentTrialEnd = currentTrainer?.trial_end ? new Date(currentTrainer.trial_end) : new Date();
-
       const newTrialEnd = new Date(currentTrialEnd);
       newTrialEnd.setDate(newTrialEnd.getDate() + 14);
 
@@ -282,7 +274,6 @@ const TrainerManagement = () => {
 
       toast.success('Trial extended by 14 days');
       console.log('✅ Trial extended successfully');
-
     } catch (error) {
       console.error('❌ Error extending trial:', error);
       toast.error('Failed to extend trial: ' + error.message);
@@ -303,23 +294,19 @@ const TrainerManagement = () => {
 
       if (error) {
         console.error('❌ Error creating tenant schema:', error);
-        
         if (error.code === '42710') {
           toast.success('Schema already exists for this trainer', { id: 'create-schema' });
           return;
         }
-
         if (error.code === '42P06') {
           toast.success('Schema already exists', { id: 'create-schema' });
           return;
         }
-
         throw error;
       }
 
       toast.success('Tenant schema created successfully!', { id: 'create-schema' });
       console.log('✅ Tenant schema created successfully');
-
     } catch (error) {
       console.error('❌ Error creating tenant schema:', error);
       toast.error(error.message || 'Failed to create tenant schema', { id: 'create-schema' });
@@ -364,6 +351,7 @@ const TrainerManagement = () => {
       if (editingTrainer) {
         // Update existing trainer
         console.log('📝 Updating existing trainer:', editingTrainer.id);
+
         const { data, error } = await supabase
           .from('trainers')
           .update({
@@ -383,18 +371,16 @@ const TrainerManagement = () => {
         setTrainers(trainers.map(t => t.id === editingTrainer.id ? data : t));
         toast.success('Trainer updated successfully');
         console.log('✅ Trainer updated successfully');
-
       } else {
         // Create new trainer record using RPC function
         console.log('➕ Creating new trainer record via RPC');
-        
         try {
           // Calculate trial end date
           const newTrialEnd = new Date();
           newTrialEnd.setDate(newTrialEnd.getDate() + parseInt(newTrainer.trial_days));
 
           // Use RPC function to create trainer without FK constraint issues
-          const { data: trainerData, error: trainerError } = await supabase.rpc('create_trainer_simple', {
+          const { data: trainerResult, error: trainerError } = await supabase.rpc('create_trainer_simple', {
             trainer_email: newTrainer.email,
             trainer_name: newTrainer.full_name,
             trial_end_date: newTrialEnd.toISOString()
@@ -405,7 +391,15 @@ const TrainerManagement = () => {
             throw new Error(`Failed to create trainer: ${trainerError.message}`);
           }
 
-          console.log('✅ Trainer record created successfully:', trainerData);
+          console.log('✅ Trainer record created successfully:', trainerResult);
+
+          // The function now returns JSON, so we need to parse it differently
+          let trainerData;
+          if (typeof trainerResult === 'string') {
+            trainerData = JSON.parse(trainerResult);
+          } else {
+            trainerData = trainerResult;
+          }
 
           // Refresh trainers list to get the new record
           await loadTrainers();
@@ -424,7 +418,6 @@ const TrainerManagement = () => {
             `✅ Trainer record created! The trainer can now register at your app with email: ${newTrainer.email}`,
             { duration: 8000 }
           );
-
         } catch (error) {
           console.error('❌ Error creating trainer:', error);
           throw error;
@@ -441,7 +434,6 @@ const TrainerManagement = () => {
 
       // Refresh the list
       await loadTrainers();
-
     } catch (error) {
       console.error('❌ Error saving trainer:', error);
       toast.error(error.message || 'Failed to save trainer');
@@ -531,17 +523,30 @@ const TrainerManagement = () => {
 
       {/* Authentication Status */}
       {authDebugInfo && (
-        <div className={`p-4 rounded-lg border ${authDebugInfo.can_delete_trainers ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+        <div className={`p-4 rounded-lg border ${
+          authDebugInfo.can_delete_trainers 
+            ? 'bg-green-50 border-green-200' 
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
           <div className="flex items-center space-x-2">
             <SafeIcon 
               icon={authDebugInfo.can_delete_trainers ? FiCheck : FiAlertTriangle} 
-              className={`w-5 h-5 ${authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'}`} 
+              className={`w-5 h-5 ${
+                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
+              }`} 
             />
             <div className="flex-1">
-              <p className={`text-sm font-medium ${authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'}`}>
-                {authDebugInfo.can_delete_trainers ? 'Superadmin access confirmed' : 'Limited access - some operations may not work'}
+              <p className={`text-sm font-medium ${
+                authDebugInfo.can_delete_trainers ? 'text-green-800' : 'text-yellow-800'
+              }`}>
+                {authDebugInfo.can_delete_trainers 
+                  ? 'Superadmin access confirmed' 
+                  : 'Limited access - some operations may not work'
+                }
               </p>
-              <p className={`text-xs ${authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'}`}>
+              <p className={`text-xs ${
+                authDebugInfo.can_delete_trainers ? 'text-green-600' : 'text-yellow-600'
+              }`}>
                 User: {authDebugInfo.user_email} | Session: {authDebugInfo.session_info} | Can delete: {authDebugInfo.can_delete_trainers ? 'Yes' : 'No'}
                 {authDebugInfo.error && ` | Error: ${authDebugInfo.error}`}
               </p>
@@ -558,7 +563,8 @@ const TrainerManagement = () => {
             <h4 className="text-sm font-medium text-blue-800">How Trainer Creation Works</h4>
             <p className="text-sm text-blue-700 mt-1">
               <strong>Simple Database-Only Approach:</strong> This creates a trainer record in the database with the provided email. 
-              The trainer can then register their own account using the same email address, and the system will automatically link their auth account to this trainer record.
+              The trainer can then register their own account using the same email address, and the system will automatically link 
+              their auth account to this trainer record.
             </p>
           </div>
         </div>
@@ -575,6 +581,7 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiCheck} className="w-8 h-8 text-green-600" />
@@ -586,6 +593,7 @@ const TrainerManagement = () => {
             </div>
           </div>
         </div>
+
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
             <SafeIcon icon={FiClock} className="w-8 h-8 text-yellow-600" />
@@ -684,9 +692,11 @@ const TrainerManagement = () => {
                           </div>
                         </div>
                       </td>
+
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">{trainer.email}</div>
                       </td>
+
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           trialStatus.status === 'active' 
@@ -699,9 +709,14 @@ const TrainerManagement = () => {
                           }
                         </span>
                       </td>
+
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {trainer.created_at ? format(new Date(trainer.created_at), 'MMM dd, yyyy') : 'N/A'}
+                        {trainer.created_at 
+                          ? format(new Date(trainer.created_at), 'MMM dd, yyyy') 
+                          : 'N/A'
+                        }
                       </td>
+
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           trainer.is_active !== false 
@@ -711,6 +726,7 @@ const TrainerManagement = () => {
                           {trainer.is_active !== false ? 'Active' : 'Inactive'}
                         </span>
                       </td>
+
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center space-x-2">
                           <button
@@ -725,8 +741,8 @@ const TrainerManagement = () => {
                             onClick={() => toggleTrainerStatus(trainer.id, trainer.is_active !== false)}
                             disabled={isProcessingThisTrainer}
                             className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                              trainer.is_active !== false
-                                ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                              trainer.is_active !== false 
+                                ? 'bg-red-100 text-red-700 hover:bg-red-200' 
                                 : 'bg-green-100 text-green-700 hover:bg-green-200'
                             } ${isProcessingThisTrainer ? 'opacity-50 cursor-not-allowed' : ''}`}
                           >
@@ -796,7 +812,7 @@ const TrainerManagement = () => {
             <h2 className="text-xl font-semibold mb-4">
               {editingTrainer ? 'Edit Trainer' : 'Add New Trainer'}
             </h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -811,7 +827,7 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's full name"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
@@ -826,17 +842,17 @@ const TrainerManagement = () => {
                   placeholder="Enter trainer's email"
                 />
               </div>
-              
+
               {!editingTrainer && (
                 <>
                   <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                     <p className="text-sm text-green-800">
                       <strong>✅ Simple Approach:</strong> This creates a trainer record in the database. 
-                      The trainer can then register their own account using this email address, 
-                      and the system will automatically link their account.
+                      The trainer can then register their own account using this email address, and the 
+                      system will automatically link their account.
                     </p>
                   </div>
-                  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Trial Days
@@ -853,7 +869,7 @@ const TrainerManagement = () => {
                   </div>
                 </>
               )}
-              
+
               <div className="flex justify-end space-x-3 pt-4">
                 <button
                   onClick={() => setShowModal(false)}

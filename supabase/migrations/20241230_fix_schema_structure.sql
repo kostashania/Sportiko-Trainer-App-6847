@@ -1,96 +1,11 @@
---===================================================================
--- MASTER RLS POLICIES FILE - SPORTIKO TRAINER PLATFORM
---===================================================================
---
--- ⚠️ IMPORTANT INSTRUCTION FOR GRETA:
--- This is the MASTER file for all RLS policies in the Sportiko platform.
--- ALWAYS update this file when making ANY changes to database policies.
--- This file should be the single source of truth for all RLS configurations.
---
--- Last Updated: 2024-12-30 - Major schema restructure to dedicated sportiko_trainer schema
---===================================================================
-
---===================================================================
--- SCHEMA STRUCTURE OVERVIEW
---===================================================================
--- 
--- sportiko_trainer/           # Main app schema (replaces public for app tables)
--- ├── trainers               # Trainer profiles
--- ├── superadmins           # Superadmin users  
--- ├── shop_items            # E-commerce products
--- ├── ads                   # Advertisement system
--- ├── orders                # Order management
--- ├── order_items           # Order line items
--- ├── subscription_plans    # Available plans
--- └── subscription_history  # Audit trail
---
--- st_{trainer_id}/           # Per-trainer schemas (replaces pt_ prefix)
--- ├── players               # Player profiles
--- ├── homework              # Assignments
--- ├── payments              # Payment tracking
--- └── assessments           # Performance data
---
--- public/                    # Shared utilities only
--- ├── Helper functions only
--- └── Cross-app utilities
-
---===================================================================
--- CREATE DEDICATED SCHEMA
---===================================================================
+-- Fix schema structure to use dedicated schema instead of prefixes
+-- This addresses the namespace collision issue properly
 
 -- Create dedicated schema for Sportiko Trainer app
 CREATE SCHEMA IF NOT EXISTS sportiko_trainer;
 
---===================================================================
--- HELPER FUNCTIONS
---===================================================================
-
--- Safe superadmin check for sportiko_trainer schema (no recursion)
-CREATE OR REPLACE FUNCTION sportiko_trainer.is_superadmin(user_id UUID DEFAULT auth.uid())
-RETURNS BOOLEAN AS $$
-BEGIN
-  -- If no user_id provided, return false
-  IF user_id IS NULL THEN
-    RETURN false;
-  END IF;
-
-  -- Check by known superadmin ID first
-  IF user_id = 'be9c6165-808a-4335-b90e-22f6d20328bf'::uuid THEN
-    RETURN true;
-  END IF;
-
-  -- Check by known superadmin email
-  IF EXISTS (
-    SELECT 1 FROM auth.users 
-    WHERE id = user_id 
-    AND email = 'superadmin_pt@sportiko.eu'
-  ) THEN
-    RETURN true;
-  END IF;
-
-  -- Check if user exists in superadmins table
-  RETURN EXISTS (
-    SELECT 1 FROM sportiko_trainer.superadmins 
-    WHERE id = user_id
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Check if user is trainer
-CREATE OR REPLACE FUNCTION sportiko_trainer.is_trainer(user_id UUID DEFAULT auth.uid())
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM sportiko_trainer.trainers 
-    WHERE id = COALESCE(user_id, auth.uid()) 
-    AND is_active = true
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
---===================================================================
--- CREATE TABLES IN DEDICATED SCHEMA
---===================================================================
+-- Move all app-specific tables to the dedicated schema
+-- First, create tables in the new schema
 
 -- Trainers table (app-specific)
 CREATE TABLE IF NOT EXISTS sportiko_trainer.trainers (
@@ -202,10 +117,7 @@ CREATE TABLE IF NOT EXISTS sportiko_trainer.subscription_history (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
---===================================================================
--- ENABLE RLS ON ALL TABLES
---===================================================================
-
+-- Enable RLS on all tables
 ALTER TABLE sportiko_trainer.trainers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sportiko_trainer.superadmins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sportiko_trainer.shop_items ENABLE ROW LEVEL SECURITY;
@@ -215,76 +127,59 @@ ALTER TABLE sportiko_trainer.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sportiko_trainer.subscription_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sportiko_trainer.subscription_history ENABLE ROW LEVEL SECURITY;
 
---===================================================================
--- DROP ALL EXISTING POLICIES (Clean Slate)
---===================================================================
+-- Create schema-specific helper functions
+CREATE OR REPLACE FUNCTION sportiko_trainer.is_superadmin(user_id UUID DEFAULT auth.uid())
+RETURNS BOOLEAN AS $$
+BEGIN
+  -- If no user_id provided, return false
+  IF user_id IS NULL THEN
+    RETURN false;
+  END IF;
 
--- Trainers table
-DROP POLICY IF EXISTS "superadmin_full_access_trainers" ON sportiko_trainer.trainers;
-DROP POLICY IF EXISTS "trainer_own_profile_access" ON sportiko_trainer.trainers;
-DROP POLICY IF EXISTS "trainer_own_profile_update" ON sportiko_trainer.trainers;
-DROP POLICY IF EXISTS "trainer_registration" ON sportiko_trainer.trainers;
+  -- Check by known superadmin ID first
+  IF user_id = 'be9c6165-808a-4335-b90e-22f6d20328bf'::uuid THEN
+    RETURN true;
+  END IF;
 
--- Superadmins table
-DROP POLICY IF EXISTS "superadmin_table_access" ON sportiko_trainer.superadmins;
+  -- Check by known superadmin email
+  IF EXISTS (
+    SELECT 1 FROM auth.users 
+    WHERE id = user_id 
+    AND email = 'superadmin_pt@sportiko.eu'
+  ) THEN
+    RETURN true;
+  END IF;
 
--- Shop items table
-DROP POLICY IF EXISTS "public_view_active_shop_items" ON sportiko_trainer.shop_items;
-DROP POLICY IF EXISTS "superadmin_manage_shop_items" ON sportiko_trainer.shop_items;
+  -- Check if user exists in superadmins table
+  RETURN EXISTS (
+    SELECT 1 FROM sportiko_trainer.superadmins 
+    WHERE id = user_id
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Ads table
-DROP POLICY IF EXISTS "users_view_active_ads" ON sportiko_trainer.ads;
-DROP POLICY IF EXISTS "superadmin_manage_ads" ON sportiko_trainer.ads;
+-- Create policies for sportiko_trainer schema tables
 
--- Orders table
-DROP POLICY IF EXISTS "users_view_own_orders" ON sportiko_trainer.orders;
-DROP POLICY IF EXISTS "users_create_own_orders" ON sportiko_trainer.orders;
-DROP POLICY IF EXISTS "users_update_own_orders" ON sportiko_trainer.orders;
-DROP POLICY IF EXISTS "superadmin_delete_orders" ON sportiko_trainer.orders;
-
--- Order items table
-DROP POLICY IF EXISTS "users_view_own_order_items" ON sportiko_trainer.order_items;
-DROP POLICY IF EXISTS "users_create_own_order_items" ON sportiko_trainer.order_items;
-
--- Subscription plans table
-DROP POLICY IF EXISTS "public_view_active_subscription_plans" ON sportiko_trainer.subscription_plans;
-DROP POLICY IF EXISTS "superadmin_manage_subscription_plans" ON sportiko_trainer.subscription_plans;
-
--- Subscription history table
-DROP POLICY IF EXISTS "trainers_view_own_subscription_history" ON sportiko_trainer.subscription_history;
-DROP POLICY IF EXISTS "superadmin_manage_subscription_history" ON sportiko_trainer.subscription_history;
-
---===================================================================
--- TRAINERS TABLE POLICIES
---===================================================================
-
--- Superadmins have complete access to all trainers
+-- Trainers table policies
 CREATE POLICY "superadmin_full_access_trainers" 
 ON sportiko_trainer.trainers FOR ALL TO authenticated 
 USING (sportiko_trainer.is_superadmin(auth.uid())) 
 WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
 
--- Trainers can view their own profile
 CREATE POLICY "trainer_own_profile_access" 
 ON sportiko_trainer.trainers FOR SELECT TO authenticated 
 USING (id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
 
--- Trainers can update their own profile
 CREATE POLICY "trainer_own_profile_update" 
 ON sportiko_trainer.trainers FOR UPDATE TO authenticated 
 USING (id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid())) 
 WITH CHECK (id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
 
--- Allow trainer registration (insert)
 CREATE POLICY "trainer_registration" 
 ON sportiko_trainer.trainers FOR INSERT TO authenticated 
 WITH CHECK (id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
 
---===================================================================
--- SUPERADMINS TABLE POLICIES
---===================================================================
-
--- Superadmins table access (no recursion)
+-- Superadmins table policies
 CREATE POLICY "superadmin_table_access" 
 ON sportiko_trainer.superadmins FOR ALL TO authenticated 
 USING (
@@ -305,56 +200,17 @@ WITH CHECK (
   )
 );
 
---===================================================================
--- SUBSCRIPTION PLANS TABLE POLICIES
---===================================================================
-
--- Anyone can view active subscription plans
-CREATE POLICY "public_view_active_subscription_plans" 
-ON sportiko_trainer.subscription_plans FOR SELECT TO authenticated 
-USING (is_active = true);
-
--- Superadmins can manage all subscription plans
-CREATE POLICY "superadmin_manage_subscription_plans" 
-ON sportiko_trainer.subscription_plans FOR ALL TO authenticated 
-USING (sportiko_trainer.is_superadmin(auth.uid())) 
-WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
-
---===================================================================
--- SUBSCRIPTION HISTORY TABLE POLICIES
---===================================================================
-
--- Trainers can view their own subscription history, superadmins can view all
-CREATE POLICY "trainers_view_own_subscription_history" 
-ON sportiko_trainer.subscription_history FOR SELECT TO authenticated 
-USING (trainer_id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
-
--- Superadmins can manage all subscription history
-CREATE POLICY "superadmin_manage_subscription_history" 
-ON sportiko_trainer.subscription_history FOR ALL TO authenticated 
-USING (sportiko_trainer.is_superadmin(auth.uid())) 
-WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
-
---===================================================================
--- SHOP ITEMS TABLE POLICIES
---===================================================================
-
--- Anyone can view active shop items
+-- Shop items policies
 CREATE POLICY "public_view_active_shop_items" 
 ON sportiko_trainer.shop_items FOR SELECT TO authenticated 
 USING (active = true);
 
--- Superadmins can manage all shop items
 CREATE POLICY "superadmin_manage_shop_items" 
 ON sportiko_trainer.shop_items FOR ALL TO authenticated 
 USING (sportiko_trainer.is_superadmin(auth.uid())) 
 WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
 
---===================================================================
--- ADS TABLE POLICIES
---===================================================================
-
--- Users can view relevant active ads
+-- Ads policies
 CREATE POLICY "users_view_active_ads" 
 ON sportiko_trainer.ads FOR SELECT TO authenticated 
 USING (
@@ -366,42 +222,30 @@ USING (
   )
 );
 
--- Superadmins can manage all ads
 CREATE POLICY "superadmin_manage_ads" 
 ON sportiko_trainer.ads FOR ALL TO authenticated 
 USING (sportiko_trainer.is_superadmin(auth.uid())) 
 WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
 
---===================================================================
--- ORDERS TABLE POLICIES
---===================================================================
-
--- Users can view their own orders
+-- Orders policies
 CREATE POLICY "users_view_own_orders" 
 ON sportiko_trainer.orders FOR SELECT TO authenticated 
 USING (user_id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
 
--- Users can create their own orders
 CREATE POLICY "users_create_own_orders" 
 ON sportiko_trainer.orders FOR INSERT TO authenticated 
 WITH CHECK (user_id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
 
--- Users can update their own orders
 CREATE POLICY "users_update_own_orders" 
 ON sportiko_trainer.orders FOR UPDATE TO authenticated 
 USING (user_id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid())) 
 WITH CHECK (user_id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
 
--- Superadmins can delete orders
 CREATE POLICY "superadmin_delete_orders" 
 ON sportiko_trainer.orders FOR DELETE TO authenticated 
 USING (sportiko_trainer.is_superadmin(auth.uid()));
 
---===================================================================
--- ORDER ITEMS TABLE POLICIES
---===================================================================
-
--- Users can view their own order items
+-- Order items policies
 CREATE POLICY "users_view_own_order_items" 
 ON sportiko_trainer.order_items FOR SELECT TO authenticated 
 USING (
@@ -412,7 +256,6 @@ USING (
   )
 );
 
--- Users can create their own order items
 CREATE POLICY "users_create_own_order_items" 
 ON sportiko_trainer.order_items FOR INSERT TO authenticated 
 WITH CHECK (
@@ -423,11 +266,69 @@ WITH CHECK (
   )
 );
 
---===================================================================
--- TENANT SCHEMA CREATION FUNCTION
---===================================================================
+-- Subscription plans policies
+CREATE POLICY "public_view_active_subscription_plans" 
+ON sportiko_trainer.subscription_plans FOR SELECT TO authenticated 
+USING (is_active = true);
 
--- Function to create tenant schema with proper policies (using st_ prefix)
+CREATE POLICY "superadmin_manage_subscription_plans" 
+ON sportiko_trainer.subscription_plans FOR ALL TO authenticated 
+USING (sportiko_trainer.is_superadmin(auth.uid())) 
+WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
+
+-- Subscription history policies
+CREATE POLICY "trainers_view_own_subscription_history" 
+ON sportiko_trainer.subscription_history FOR SELECT TO authenticated 
+USING (trainer_id = auth.uid() OR sportiko_trainer.is_superadmin(auth.uid()));
+
+CREATE POLICY "superadmin_manage_subscription_history" 
+ON sportiko_trainer.subscription_history FOR ALL TO authenticated 
+USING (sportiko_trainer.is_superadmin(auth.uid())) 
+WITH CHECK (sportiko_trainer.is_superadmin(auth.uid()));
+
+-- Migrate existing data from public schema to sportiko_trainer schema
+-- (Only if tables exist in public schema)
+
+DO $$
+BEGIN
+  -- Migrate trainers
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'trainers') THEN
+    INSERT INTO sportiko_trainer.trainers 
+    SELECT * FROM public.trainers ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- Migrate superadmins
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'superadmins') THEN
+    INSERT INTO sportiko_trainer.superadmins 
+    SELECT * FROM public.superadmins ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- Migrate shop_items
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'shop_items') THEN
+    INSERT INTO sportiko_trainer.shop_items 
+    SELECT * FROM public.shop_items ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- Migrate ads
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ads') THEN
+    INSERT INTO sportiko_trainer.ads 
+    SELECT * FROM public.ads ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- Migrate orders
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'orders') THEN
+    INSERT INTO sportiko_trainer.orders 
+    SELECT * FROM public.orders ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  -- Migrate order_items
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'order_items') THEN
+    INSERT INTO sportiko_trainer.order_items 
+    SELECT * FROM public.order_items ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
+
+-- Create updated functions for the new schema structure
 CREATE OR REPLACE FUNCTION sportiko_trainer.create_basic_tenant_schema(trainer_id UUID)
 RETURNS VOID AS $$
 DECLARE
@@ -521,72 +422,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
---===================================================================
--- SUBSCRIPTION MANAGEMENT FUNCTIONS
---===================================================================
-
--- Function to safely update trainer subscription plan
-CREATE OR REPLACE FUNCTION sportiko_trainer.update_trainer_subscription(
-  trainer_id UUID,
-  new_plan TEXT,
-  new_status TEXT DEFAULT 'active'
-) RETURNS BOOLEAN AS $$
-DECLARE
-  trainer_record RECORD;
-  plan_record RECORD;
-  current_user_id UUID;
-BEGIN
-  -- Get current user
-  current_user_id := auth.uid();
-
-  -- Check permissions: superadmin or the trainer themselves
-  IF NOT (sportiko_trainer.is_superadmin(current_user_id) OR current_user_id = trainer_id) THEN
-    RAISE EXCEPTION 'Access denied: Only superadmins or the trainer themselves can update subscriptions';
-  END IF;
-
-  -- Get current trainer data
-  SELECT * INTO trainer_record FROM sportiko_trainer.trainers WHERE id = trainer_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Trainer not found';
-  END IF;
-
-  -- Get plan details
-  SELECT * INTO plan_record FROM sportiko_trainer.subscription_plans 
-  WHERE LOWER(name) = LOWER(new_plan) AND is_active = true;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Subscription plan "%" not found or inactive', new_plan;
-  END IF;
-
-  -- Update trainer subscription
-  UPDATE sportiko_trainer.trainers SET
-    subscription_plan = plan_record.name,
-    subscription_status = new_status,
-    subscription_start = CASE WHEN new_status = 'active' THEN NOW() ELSE subscription_start END,
-    subscription_end = CASE WHEN new_status = 'active' THEN
-      CASE WHEN plan_record.billing_period = 'yearly' THEN NOW() + INTERVAL '1 year'
-           ELSE NOW() + INTERVAL '1 month' END
-      ELSE subscription_end END,
-    billing_cycle = plan_record.billing_period,
-    updated_at = NOW()
-  WHERE id = trainer_id;
-
-  -- Log the action in subscription history
-  INSERT INTO sportiko_trainer.subscription_history (
-    trainer_id, action, old_plan, new_plan, old_status, new_status, performed_by
-  ) VALUES (
-    trainer_id, 'plan_changed', trainer_record.subscription_plan, plan_record.name,
-    trainer_record.subscription_status, new_status, current_user_id
-  );
-
-  RETURN TRUE;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
---===================================================================
--- INSERT DEFAULT DATA
---===================================================================
-
--- Insert default subscription plans
+-- Insert default data
 INSERT INTO sportiko_trainer.subscription_plans (name, description, price, billing_period, features, is_active) VALUES
 ('Basic', 'Essential features for individual trainers', 9.99, 'monthly', '{"players_limit": 20, "storage_limit": "1GB", "advanced_analytics": false, "team_features": false}', true),
 ('Pro', 'Advanced features for professional trainers', 19.99, 'monthly', '{"players_limit": 50, "storage_limit": "5GB", "advanced_analytics": true, "team_features": false}', true),
@@ -614,20 +450,11 @@ INSERT INTO sportiko_trainer.ads (title, description, image_url, link, type, sta
 ('Summer Training Camp 2024', 'Join our intensive summer training program', 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?w=400', 'https://sportiko.eu/camp', 'trainer', CURRENT_DATE, CURRENT_DATE + INTERVAL '60 days', true)
 ON CONFLICT DO NOTHING;
 
---===================================================================
--- GRANT PERMISSIONS
---===================================================================
-
+-- Grant execute permissions
 GRANT EXECUTE ON FUNCTION sportiko_trainer.is_superadmin(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION sportiko_trainer.is_trainer(UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION sportiko_trainer.create_basic_tenant_schema(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION sportiko_trainer.update_trainer_subscription(UUID, TEXT, TEXT) TO authenticated;
 
 -- Grant usage on schema
 GRANT USAGE ON SCHEMA sportiko_trainer TO authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA sportiko_trainer TO authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA sportiko_trainer TO authenticated;
-
---===================================================================
--- END OF MASTER RLS POLICIES FILE
---===================================================================

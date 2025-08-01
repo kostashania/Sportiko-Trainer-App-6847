@@ -41,18 +41,6 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         console.log('🔄 Auth state change:', event, !!session);
         
-        // Prevent unwanted session changes during trainer creation
-        if (event === 'SIGNED_IN' && session?.user) {
-          // Check if this is an unwanted session change
-          const currentUser = user;
-          if (currentUser && currentUser.email === 'superadmin_pt@sportiko.eu' && 
-              session.user.email !== 'superadmin_pt@sportiko.eu') {
-            console.log('⚠️ Preventing unwanted session change during trainer creation');
-            // Don't update the session if we're currently a superadmin
-            return;
-          }
-        }
-        
         setUser(session?.user ?? null);
         if (session?.user) {
           await fetchProfile(session.user);
@@ -82,7 +70,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      // Try to fetch from actual Supabase - first check if user is a superadmin
+      // Try to fetch from sportiko_trainer schema - first check if user is a superadmin
       try {
         console.log('🔍 Checking superadmins table...');
         const { data: adminData, error: adminError } = await supabase
@@ -117,9 +105,11 @@ export const AuthProvider = ({ children }) => {
 
         if (!trainerError && trainerData) {
           console.log('🏃 Found in trainers table:', trainerData);
+          
           // Ensure tenant schema exists for this trainer
           console.log('🏗️ Ensuring tenant schema exists...');
           await ensureTenantSchema(user.id);
+          
           setProfile({
             ...trainerData,
             role: 'trainer',
@@ -133,33 +123,8 @@ export const AuthProvider = ({ children }) => {
         console.error('❌ Error checking trainer:', trainerError);
       }
 
-      // Check if user is a player (in players_auth table)
-      try {
-        console.log('🔍 Checking players_auth table...');
-        const { data: playerData, error: playerError } = await supabase
-          .from('players_auth')
-          .select('*, trainers:trainer_id(*)')
-          .eq('id', user.id)
-          .single();
-
-        if (!playerError && playerData) {
-          console.log('🏃‍♂️ Found in players_auth table:', playerData);
-          setProfile({
-            ...playerData,
-            role: 'player',
-            full_name: user.user_metadata?.full_name || 'Player',
-            trainer_id: playerData.trainer_id
-          });
-          return;
-        } else {
-          console.log('❌ Not found in players_auth table:', playerError?.message);
-        }
-      } catch (playerError) {
-        console.error('❌ Error checking player:', playerError);
-      }
-
       console.warn('⚠️ No profile found for user:', user.email);
-
+      
       // If user is the known trainer, create their profile
       if (user.id === 'd45616a4-d90b-4358-b62c-9005f61e3d84' || user.email === 'trainer_pt@sportiko.eu') {
         console.log('🏃 Creating profile for known trainer');
@@ -201,7 +166,6 @@ export const AuthProvider = ({ children }) => {
         role: 'trainer', // Default role
         trial_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
       });
-
     } catch (error) {
       console.error('❌ Error fetching profile:', error);
       // Create a fallback profile with basic information if user exists
@@ -221,7 +185,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
-        password,
+        password
       });
 
       if (error) throw error;
@@ -304,7 +268,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     signUp,
-    fetchProfile,
+    fetchProfile
   };
 
   return (

@@ -1,4 +1,4 @@
-import {createClient} from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 // Get credentials from environment variables with fallbacks
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bjelydvroavsqczejpgd.supabase.co';
@@ -25,7 +25,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     }
   },
   db: {
-    schema: 'public'
+    schema: 'sportiko_trainer' // Use our dedicated schema
   }
 });
 
@@ -52,36 +52,33 @@ export const checkSupabaseConnection = async () => {
   }
 };
 
-// Get tenant schema based on user ID
+// Get tenant schema based on user ID (using st_ prefix instead of pt_)
 export const getTenantSchema = (userId) => {
-  return `pt_${userId.replace(/-/g, '_')}`;
+  return `st_${userId.replace(/-/g, '_')}`;
 };
 
-// Schema names
+// Schema names - updated for new structure
 export const SCHEMAS = {
-  MAIN: 'sportiko_pt',
-  TRAINER_PREFIX: 'pt_'
+  MAIN: 'sportiko_trainer',
+  TRAINER_PREFIX: 'st_'
 };
 
 // Table names in main schema
 export const MAIN_TABLES = {
   SUBSCRIPTION_PLANS: 'subscription_plans',
   TRAINERS: 'trainers',
-  PLAYERS_AUTH: 'players_auth',
-  SETTINGS: 'settings',
-  ADS: 'ads'
+  SUPERADMINS: 'superadmins',
+  SHOP_ITEMS: 'shop_items',
+  ADS: 'ads',
+  ORDERS: 'orders',
+  ORDER_ITEMS: 'order_items'
 };
 
 // Table names in trainer schema
 export const TRAINER_TABLES = {
   PLAYERS: 'players',
-  ASSESSMENTS: 'assessments',
-  EXERCISES: 'exercises',
   HOMEWORK: 'homework',
-  HOMEWORK_ITEMS: 'homework_items',
-  PRODUCTS: 'products',
-  ORDERS: 'orders',
-  ORDER_ITEMS: 'order_items'
+  PAYMENTS: 'payments'
 };
 
 // Real user IDs from the database
@@ -96,7 +93,7 @@ export const createTenantSchema = async (trainerId) => {
   try {
     console.log('🏗️ Creating tenant schema for trainer:', trainerId);
     
-    // Use the database function that should be available to authenticated users
+    // Use the schema-specific function
     const { data, error } = await supabase.rpc('create_basic_tenant_schema', {
       trainer_id: trainerId
     });
@@ -119,7 +116,7 @@ export const ensureTenantSchema = async (trainerId) => {
   try {
     const schemaName = getTenantSchema(trainerId);
     console.log('🔍 Checking if tenant schema exists:', schemaName);
-
+    
     // Check if schema exists by trying to query a table
     const { data, error } = await supabase
       .from(`${schemaName}.players`)
@@ -170,14 +167,14 @@ export const dbConfig = {
     try {
       const stored = localStorage.getItem('sportiko_db_config');
       if (!stored) return null;
-
+      
       const config = JSON.parse(stored);
       // Check if config is older than 24 hours
       if (Date.now() - config.timestamp > 24 * 60 * 60 * 1000) {
         localStorage.removeItem('sportiko_db_config');
         return null;
       }
-
+      
       return config;
     } catch (error) {
       console.error('Error retrieving DB config:', error);

@@ -6,7 +6,7 @@ import * as FiIcons from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiDatabase } = FiIcons;
+const { FiHome, FiUsers, FiBookOpen, FiClipboard, FiCreditCard, FiShoppingBag, FiMegaphone, FiSettings, FiLogOut, FiDatabase, FiLayers } = FiIcons;
 
 const SuperadminSidebar = () => {
   const { signOut } = useAuth();
@@ -36,6 +36,7 @@ const SuperadminSidebar = () => {
   const menuItems = [
     { path: '/superadmin/dashboard', icon: FiHome, label: 'Dashboard' },
     { path: '/superadmin/trainers', icon: FiUsers, label: 'Trainers' },
+    { path: '/superadmin/schemas', icon: FiLayers, label: 'Tenant Schemas' },
     { path: '/superadmin/shop', icon: FiShoppingBag, label: 'Shop' },
     { path: '/superadmin/ads', icon: FiMegaphone, label: 'Ads' },
     { path: '/superadmin/info', icon: FiDatabase, label: 'System Info' }
@@ -54,10 +55,10 @@ const SuperadminSidebar = () => {
             <li key={item.path}>
               <NavLink
                 to={item.path}
-                className={({isActive}) => 
+                className={({ isActive }) =>
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
-                    isActive 
-                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600' 
+                    isActive
+                      ? 'bg-blue-50 text-blue-600 border-r-2 border-blue-600'
                       : 'text-gray-700 hover:bg-gray-50'
                   }`
                 }

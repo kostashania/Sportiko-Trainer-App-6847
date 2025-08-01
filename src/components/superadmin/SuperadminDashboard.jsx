@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import StatsCard from '../dashboard/StatsCard';
 import toast from 'react-hot-toast';
 
-const { FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp, FiDatabase, FiShield, FiSettings } = FiIcons;
+const { FiUsers, FiShoppingBag, FiDollarSign, FiTrendingUp, FiDatabase, FiShield, FiSettings, FiLayers } = FiIcons;
 
 const SuperadminDashboard = () => {
   const navigate = useNavigate();
@@ -15,7 +15,8 @@ const SuperadminDashboard = () => {
     totalTrainers: 0,
     totalPlayers: 0,
     totalRevenue: 0,
-    activeOrders: 0
+    activeOrders: 0,
+    tenantSchemas: 0
   });
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
@@ -39,6 +40,17 @@ const SuperadminDashboard = () => {
         .from('orders')
         .select('total_amount, status');
 
+      // Get tenant schemas count
+      let tenantSchemasCount = 0;
+      try {
+        const { data: schemas } = await supabase.rpc('get_schemas_info');
+        tenantSchemasCount = schemas?.filter(s => s.is_trainer_schema).length || 0;
+      } catch (error) {
+        console.error('Error loading schemas:', error);
+        // Use trainer count as fallback
+        tenantSchemasCount = trainers?.length || 0;
+      }
+
       // Calculate stats
       const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
       const activeOrders = orders?.filter(order => 
@@ -49,7 +61,8 @@ const SuperadminDashboard = () => {
         totalTrainers: trainers?.length || 0,
         totalPlayers: 0, // This would need to be calculated from all tenant schemas
         totalRevenue,
-        activeOrders
+        activeOrders,
+        tenantSchemas: tenantSchemasCount
       });
     } catch (error) {
       console.error('Error loading superadmin stats:', error);
@@ -106,6 +119,10 @@ const SuperadminDashboard = () => {
     navigate('/superadmin/trainers');
   };
 
+  const handleManageSchemas = () => {
+    navigate('/superadmin/schemas');
+  };
+
   const handleManageShop = () => {
     navigate('/superadmin/shop');
   };
@@ -143,12 +160,19 @@ const SuperadminDashboard = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <StatsCard
           title="Total Trainers"
           value={stats.totalTrainers}
           icon={FiUsers}
           color="blue"
+          loading={loading}
+        />
+        <StatsCard
+          title="Tenant Schemas"
+          value={stats.tenantSchemas}
+          icon={FiDatabase}
+          color="purple"
           loading={loading}
         />
         <StatsCard
@@ -191,6 +215,20 @@ const SuperadminDashboard = () => {
                 </div>
               </div>
             </button>
+
+            <button
+              onClick={handleManageSchemas}
+              className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+            >
+              <div className="flex items-center">
+                <SafeIcon icon={FiLayers} className="w-5 h-5 text-purple-600 mr-3" />
+                <div>
+                  <span className="text-purple-700 font-medium">Tenant Schemas</span>
+                  <p className="text-purple-600 text-sm">View and manage existing tenant schemas</p>
+                </div>
+              </div>
+            </button>
+
             <button
               onClick={handleManageShop}
               className="w-full text-left p-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
@@ -203,27 +241,29 @@ const SuperadminDashboard = () => {
                 </div>
               </div>
             </button>
+
             <button
               onClick={handleManageAds}
-              className="w-full text-left p-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
-            >
-              <div className="flex items-center">
-                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-purple-600 mr-3" />
-                <div>
-                  <span className="text-purple-700 font-medium">Manage Advertisements</span>
-                  <p className="text-purple-600 text-sm">Create and schedule platform ads</p>
-                </div>
-              </div>
-            </button>
-            <button
-              onClick={handleViewAnalytics}
               className="w-full text-left p-3 bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
             >
               <div className="flex items-center">
                 <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-yellow-600 mr-3" />
                 <div>
-                  <span className="text-yellow-700 font-medium">View Analytics</span>
-                  <p className="text-yellow-600 text-sm">Platform performance metrics</p>
+                  <span className="text-yellow-700 font-medium">Manage Advertisements</span>
+                  <p className="text-yellow-600 text-sm">Create and schedule platform ads</p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleViewAnalytics}
+              className="w-full text-left p-3 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+            >
+              <div className="flex items-center">
+                <SafeIcon icon={FiTrendingUp} className="w-5 h-5 text-indigo-600 mr-3" />
+                <div>
+                  <span className="text-indigo-700 font-medium">View Analytics</span>
+                  <p className="text-indigo-600 text-sm">Platform performance metrics</p>
                 </div>
               </div>
             </button>
@@ -257,7 +297,7 @@ const SuperadminDashboard = () => {
       {/* Platform Health */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Platform Health</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
             <div className="flex items-center">
               <SafeIcon icon={FiDatabase} className="w-5 h-5 text-green-600 mr-3" />
@@ -278,6 +318,13 @@ const SuperadminDashboard = () => {
               <span className="text-green-800 font-medium">Services</span>
             </div>
             <span className="text-green-600 font-semibold">Running</span>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-purple-50 rounded-lg">
+            <div className="flex items-center">
+              <SafeIcon icon={FiLayers} className="w-5 h-5 text-purple-600 mr-3" />
+              <span className="text-purple-800 font-medium">Schemas</span>
+            </div>
+            <span className="text-purple-600 font-semibold">{stats.tenantSchemas} Active</span>
           </div>
         </div>
       </div>
